@@ -1,0 +1,17 @@
+{
+  "name": "database-api-demo-backend",
+  "version": "1.0.0",
+  "description": "Express + PostgreSQL API for the Database API Demo",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.0",
+    "pg": "^8.13.0"
+  }
+}
