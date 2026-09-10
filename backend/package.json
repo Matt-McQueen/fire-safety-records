@@ -1,12 +1,14 @@
 {
-  "name": "database-api-demo-backend",
+  "name": "fire-safety-records-backend",
   "version": "1.0.0",
-  "description": "Express + PostgreSQL API for the Database API Demo",
+  "description": "Express + PostgreSQL API for workplace fire safety records (Scotland)",
   "type": "module",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
-    "dev": "node --watch src/index.js"
+    "dev": "node --watch src/index.js",
+    "seed": "node scripts/seed.mjs",
+    "seed:clear": "node scripts/seed.mjs --clear"
   },
   "dependencies": {
     "cors": "^2.8.5",

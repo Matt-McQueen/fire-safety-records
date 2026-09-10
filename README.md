@@ -84,6 +84,31 @@ npm run dev
 The frontend dev server proxies `/api` requests to the backend on port
 3001, so open the Vite URL it prints (typically http://localhost:5173).
 
+## Sample data
+
+```bash
+cd backend
+npm run seed         # clear the sample data, then insert it
+npm run seed:clear    # clear the sample data only
+```
+
+Both run in a single transaction and are safe to repeat. Clearing is
+scoped by name to the five fictional premises and eight fictional people
+the sample defines, so real records are never touched — run
+`npm run seed:clear` before going live.
+
+The data is deliberately shaped to exercise the awkward cases: five
+premises covering every state of `premises_recording_duty` (each of the
+three triggers in isolation, plus one where the duty does not apply); an
+assessment superseded by its review; a premises assessed but with
+`recorded_on` NULL, because only the duty to *record* is conditional;
+outstanding and completed measures; overdue checks and training; an
+unresolved equipment failure; and a RIDDOR-reportable dangerous
+occurrence alongside non-reportable incidents.
+
+The SQL files can also be pasted straight into the Supabase SQL Editor if
+you would rather not run the script.
+
 `DATABASE_URL` also works against any other Postgres instance (local or
 otherwise) — the pool only enables SSL when the host isn't
 `localhost`/`127.0.0.1`.
@@ -91,6 +116,7 @@ otherwise) — the pool only enables SSL when the host isn't
 ## Status
 
 - [x] Database schema
+- [x] Sample data and seed script
 - [ ] API endpoints
 - [ ] Web UI
 
