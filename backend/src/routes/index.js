@@ -1,0 +1,133 @@
+// The API surface, assembled in one place.
+//
+// Everything below `authenticate` requires a valid access token, so a resource
+// added to the list cannot be published unauthenticated by omission. The only
+// endpoints outside it are /api/health and /api/auth/login and /refresh.
+
+import { Router } from "express";
+import { authenticate } from "../auth/middleware.js";
+import { authRouter } from "../auth/authRoutes.js";
+import { usersRouter } from "./users.js";
+import { resourceRouter } from "../domain/resource.js";
+
+import {
+  legalBasis,
+  people,
+  premises,
+  safetyRoles,
+  schedule2Measures,
+} from "../domain/resources/premises.js";
+import {
+  arrangements,
+  dangerousSubstances,
+  fireRiskAssessments,
+  fraMeasures,
+  personsAtRisk,
+  significantFindings,
+} from "../domain/resources/assessments.js";
+import {
+  checkSchedules,
+  equipment,
+  equipmentChecks,
+  escapeRouteChecks,
+  escapeRoutes,
+} from "../domain/resources/equipment.js";
+import {
+  cooperationRecords,
+  emergencyProcedures,
+  fireDrills,
+  healthSafetyPolicies,
+  informationRecords,
+  trainingRecords,
+} from "../domain/resources/procedures.js";
+import {
+  enforcementNotices,
+  enforcementVisits,
+  incidents,
+} from "../domain/resources/incidents.js";
+
+// Every table in the schema is represented. Adding one here is what publishes
+// it; there is no other route to the database.
+export const RESOURCES = [
+  premises,
+  people,
+  safetyRoles,
+  fireRiskAssessments,
+  significantFindings,
+  fraMeasures,
+  personsAtRisk,
+  arrangements,
+  dangerousSubstances,
+  checkSchedules,
+  equipment,
+  equipmentChecks,
+  escapeRoutes,
+  escapeRouteChecks,
+  emergencyProcedures,
+  fireDrills,
+  trainingRecords,
+  informationRecords,
+  cooperationRecords,
+  healthSafetyPolicies,
+  incidents,
+  enforcementNotices,
+  enforcementVisits,
+  legalBasis,
+  schedule2Measures,
+];
+
+export function buildApiRouter() {
+  const api = Router();
+
+  api.get("/health", (req, res) => {
+    res.json({ status: "ok", service: "fire-safety-records-api" });
+  });
+
+  api.use("/auth", authRouter);
+
+  // From here down, an access token is required. One call, in front of
+  // everything, rather than a decision repeated at each route.
+  api.use(authenticate);
+
+  api.use("/users", usersRouter);
+
+  for (const resource of RESOURCES) {
+    api.use(resource.path, resourceRouter(resource));
+  }
+
+  // A machine-readable index of what is served, so a client can discover the
+  // endpoints and the roles they need without reading the source.
+  api.get("/", (req, res) => {
+    res.json({
+      data: {
+        resources: RESOURCES.map((resource) => ({
+          path: `/api${resource.path}`,
+          name: resource.name,
+          operations: resource.operations ?? ["list", "get", "create", "update", "remove"],
+          permissions: resource.permissions ?? {
+            read: "viewer",
+            create: "assessor",
+            update: "assessor",
+            remove: "manager",
+          },
+          filters: (resource.filters ?? []).map((filter) => filter.param),
+          sortable: Object.keys(resource.sortable ?? { id: "t.id" }),
+        })),
+        extra: [
+          { path: "/api/premises/:id/compliance", description: "Computed compliance position" },
+          {
+            path: "/api/fire-risk-assessments/:id/full",
+            description: "Assessment with findings, measures and persons at risk",
+          },
+          {
+            path: "/api/fire-risk-assessments/:id/publish",
+            description: "Make a draft the recorded assessment",
+          },
+          { path: "/api/users/audit/log", description: "Audit trail (admin)" },
+        ],
+      },
+    });
+  });
+
+  return api;
+}
