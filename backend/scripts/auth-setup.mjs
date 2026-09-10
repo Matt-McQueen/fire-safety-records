@@ -6,10 +6,13 @@
 // Options for auth:user:
 //   --email     required
 //   --name      display name (defaults to the part before the @)
-//   --role      admin | manager | assessor | viewer (default viewer)
+//   --role      admin | manager | assessor | viewer (viewer for a new account;
+//               an existing account keeps the role it has unless this is given)
 //   --password  the password; if omitted a strong one is generated and printed
-//   --premises  comma-separated premises ids to grant, or "all"
-//   --reset     update the password of an existing account
+//   --premises  comma-separated premises ids to grant, or "all" (replaces the
+//               existing grants; omit to leave them alone)
+//   --reset     issue a new password for an existing account, keeping its role,
+//               name and premises, and signing its existing sessions out
 //
 // The generated password is printed once and never stored in plaintext. It is
 // printed to stdout, so redirect it somewhere safe rather than leaving it in a
@@ -32,6 +35,8 @@ if (!process.env.DATABASE_URL) {
 
 const { pool } = await import("../src/db/pool.js");
 const { hashPassword, assertPasswordAcceptable } = await import("../src/auth/passwords.js");
+
+const ROLES = ["admin", "manager", "assessor", "viewer"];
 
 const args = parseArgs(process.argv.slice(2));
 const schemaOnly = !args.email;
@@ -66,28 +71,33 @@ if (schemaOnly && process.exitCode !== 1) {
 
 async function upsertUser(client, options) {
   const email = options.email.trim().toLowerCase();
-  const role = options.role ?? "viewer";
-  if (!["admin", "manager", "assessor", "viewer"].includes(role)) {
-    throw new Error(`Unknown role: ${role}`);
+  if (options.role && !ROLES.includes(options.role)) {
+    throw new Error(`Unknown role: ${options.role}. One of: ${ROLES.join(", ")}`);
   }
-  const fullName = options.name ?? email.split("@")[0];
 
   const { rows: existing } = await client.query(
-    "SELECT id FROM users WHERE lower(email) = lower($1)",
+    "SELECT id, role, full_name FROM users WHERE lower(email) = lower($1)",
     [email],
   );
+  const account = existing[0] ?? null;
+
+  // On an existing account, only what was actually asked for changes. Defaulting
+  // the role here would mean that resetting a password silently demoted the
+  // account to viewer — and the account most likely to need a reset is the admin.
+  const role = options.role ?? account?.role ?? "viewer";
+  const fullName = options.name ?? account?.full_name ?? email.split("@")[0];
 
   let password = options.password ?? null;
-  const needsPassword = existing.length === 0 || options.reset;
+  const needsPassword = !account || options.reset;
   if (needsPassword && !password) {
-    // 32 bytes of randomness rendered base64url: long, unguessable, and
-    // typeable enough to paste once.
+    // 24 bytes rendered base64url: long, unguessable, and short enough to paste
+    // into a password manager once.
     password = crypto.randomBytes(24).toString("base64url");
   }
   if (password) assertPasswordAcceptable(password, { email, fullName });
 
   let userId;
-  if (existing.length === 0) {
+  if (!account) {
     const { rows } = await client.query(
       `INSERT INTO users (email, full_name, password_hash, role)
        VALUES ($1, $2, $3, $4) RETURNING id`,
@@ -96,7 +106,7 @@ async function upsertUser(client, options) {
     userId = rows[0].id;
     console.log(`Created ${role} account ${email} (id ${userId}).`);
   } else {
-    userId = existing[0].id;
+    userId = account.id;
     const assignments = ["role = $2", "full_name = $3", "is_active = TRUE", "updated_at = now()"];
     const params = [userId, role, fullName];
     if (password) {
@@ -106,9 +116,21 @@ async function upsertUser(client, options) {
         "failed_login_attempts = 0",
         "locked_until = NULL",
       );
+      // Changing the password here does what changing it through the API does:
+      // closes every session, so a compromised one cannot outlive the reset.
+      await client.query(
+        `UPDATE refresh_tokens
+            SET revoked_at = now(), revoked_reason = 'password_reset'
+          WHERE user_id = $1 AND revoked_at IS NULL`,
+        [userId],
+      );
     }
     await client.query(`UPDATE users SET ${assignments.join(", ")} WHERE id = $1`, params);
-    console.log(`Updated ${email} (id ${userId}) to role ${role}.`);
+    console.log(
+      password
+        ? `Reset the password for ${email} (id ${userId}, role ${role}). Existing sessions are signed out.`
+        : `Updated ${email} (id ${userId}) to role ${role}.`,
+    );
   }
 
   if (options.premises) {

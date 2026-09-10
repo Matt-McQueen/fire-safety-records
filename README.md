@@ -83,13 +83,57 @@ npm run dev
 ```
 
 `auth:user` prints a generated password once. Store it before closing the
-terminal; it is never recoverable, only resettable.
+terminal; it is never recoverable, only resettable — see Accounts below.
 
 Set `JWT_SECRET` in `.env` before deploying. Outside production a random
 key is generated at startup, which means every restart signs everyone out.
 
 `DATABASE_URL` also works against any other Postgres instance — the pool
 only enables SSL when the host isn't `localhost`/`127.0.0.1`.
+
+### Accounts
+
+The admin account created during setup:
+
+| | |
+|---|---|
+| Email | `matt@reid-timoney.com` |
+| Role | `admin` — every premises, and user administration |
+| Password | generated at setup and shown once; not recoverable |
+
+**Issuing a new password.** Passwords are stored only as scrypt hashes, so a
+forgotten one is reset rather than looked up:
+
+```bash
+cd backend
+npm run auth:user -- --email matt@reid-timoney.com --reset
+```
+
+That prints a new password once, and leaves the role, the display name and
+the premises grants exactly as they were. It also signs out every existing
+session for that account, so a session opened with the old password cannot
+outlive the reset.
+
+Pass `--password` instead of `--reset` to choose the password yourself; it
+must be at least 12 characters and is checked against the account's own
+email and name.
+
+**Other account management.** Once signed in as an admin, accounts are
+managed through the API — `GET /api/users`, `POST /api/users`,
+`PATCH /api/users/:id` to change a role or the premises granted, and
+`DELETE /api/users/:id` to deactivate. The API will not let the last active
+admin be demoted, deactivated or deleted, because nothing in it could undo
+that. `POST /api/auth/change-password` is how a signed-in user changes
+their own.
+
+The same script creates other accounts:
+
+```bash
+npm run auth:user -- --email warden@example.com --role assessor --premises 1,2
+```
+
+An account with no premises granted can read nothing, which is the
+intended default for a new one.
 
 ## Sample data
 
