@@ -7,18 +7,20 @@ serving a small "items" CRUD resource, and a React (Vite) frontend
 ## Prerequisites
 
 - Node.js 18+
-- A PostgreSQL instance (via `docker-compose up -d`, or any existing
-  Postgres server — point `DATABASE_URL` at it)
+- A [Supabase](https://supabase.com) project (free tier is enough)
 
 ## Setup
 
-```bash
-# start Postgres (requires Docker)
-docker-compose up -d
+1. Create a Supabase project, then open its SQL Editor and run
+   `backend/src/db/init.sql` to create the `items` table.
+2. Copy the connection string from Project Settings -> Database ->
+   Connection string (URI, "Transaction" pooler works well for a
+   small app like this).
 
+```bash
 # backend
 cd backend
-cp .env.example .env
+cp .env.example .env   # paste the Supabase connection string into DATABASE_URL
 npm install
 npm run dev
 
@@ -31,9 +33,9 @@ npm run dev
 The frontend dev server proxies `/api` requests to the backend on port
 3001, so open the Vite URL it prints (typically http://localhost:5173).
 
-If you don't have Docker, create the database and table manually and
-set `DATABASE_URL` in `backend/.env` to point at it — the schema is in
-`backend/src/db/init.sql`.
+`DATABASE_URL` also works against any other Postgres instance (local
+or otherwise) — the pool only enables SSL when the host isn't
+`localhost`/`127.0.0.1`.
 
 ## API
 
