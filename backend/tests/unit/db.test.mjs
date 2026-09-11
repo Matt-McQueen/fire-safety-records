@@ -6,7 +6,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { translateDatabaseError } from "../../src/db/db.js";
+import { pool, translateDatabaseError } from "../../src/db/db.js";
 import { ApiError } from "../../src/http/errors.js";
 
 test("a foreign key violation becomes a 409 naming the constraint", () => {
@@ -46,4 +46,19 @@ test("an unrecognised or absent error code is left untranslated, so it falls thr
   assert.equal(translateDatabaseError({}), null);
   assert.equal(translateDatabaseError(null), null);
   assert.equal(translateDatabaseError(undefined), null);
+});
+
+test("the shared pool logs rather than crashes the process when an idle client errors", (t) => {
+  // Without this listener, an 'error' event with no handler is a fatal,
+  // uncaught exception in Node — which is exactly what happens when the
+  // database restarts or the network drops under a client sitting idle in
+  // the pool. Emitting the event directly is the only way to reach that
+  // listener without actually breaking a connection.
+  const errorSpy = t.mock.method(console, "error", () => {});
+  const error = new Error("Connection terminated unexpectedly");
+
+  pool.emit("error", error);
+
+  assert.equal(errorSpy.mock.calls.length, 1);
+  assert.match(errorSpy.mock.calls[0].arguments[0], /Idle database client errored/);
 });

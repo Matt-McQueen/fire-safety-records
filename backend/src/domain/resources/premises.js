@@ -168,7 +168,7 @@ const peopleFields = {
   full_name: requiredText(200),
   job_title: optionalText(150),
   email: optionalText(320).refine(
-    (value) => value === null || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value),
+    (value) => value === null || value === undefined || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value),
     "Must be an email address",
   ),
   phone: optionalText(50),

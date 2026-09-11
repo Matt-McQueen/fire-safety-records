@@ -3,7 +3,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { makePremises, makeRoles, tag } from "./helpers.mjs";
+import { anonymous, makePremises, makeRoles, tag } from "./helpers.mjs";
 
 const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
 
@@ -187,6 +187,30 @@ test("responses set the headers that stop a JSON body being treated as a documen
   assert.equal(response.headers.get("x-content-type-options"), "nosniff");
   assert.equal(response.headers.get("x-powered-by"), null);
   assert.match(response.headers.get("content-security-policy") ?? "", /default-src 'none'/);
+});
+
+test("the machine-readable index lists every resource, requires a token like anything else, and needs none of a client's own knowledge to use", async () => {
+  const premises = await makePremises();
+  const { viewer } = await makeRoles(premises.id);
+
+  assert.equal((await anonymous.get("/api/")).status, 401);
+
+  const response = await viewer.get("/api/");
+  assert.equal(response.status, 200);
+  const { resources, extra } = response.body.data;
+
+  assert.ok(resources.length >= 20, "every table in the schema should be represented");
+  const premisesEntry = resources.find((entry) => entry.name === "premises");
+  assert.equal(premisesEntry.path, "/api/premises");
+  assert.deepEqual(premisesEntry.operations, ["list", "get", "create", "update", "remove"]);
+  assert.equal(premisesEntry.permissions.read, "viewer");
+  assert.ok(Array.isArray(premisesEntry.sortable) && premisesEntry.sortable.length > 0);
+
+  // The hand-written endpoints that are not one of the generic five, listed
+  // separately because there is no resource definition to derive them from.
+  const extraPaths = extra.map((entry) => entry.path);
+  assert.ok(extraPaths.includes("/api/premises/:id/compliance"));
+  assert.ok(extraPaths.includes("/api/fire-risk-assessments/:id/publish"));
 });
 
 test("pagination reports the total and honours limit and offset", async () => {

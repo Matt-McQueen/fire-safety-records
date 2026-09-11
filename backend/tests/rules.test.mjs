@@ -56,6 +56,23 @@ test("licensed premises must say which licence, because that is the trigger", as
   assert.equal(withDetails.status, 200);
 });
 
+test("a premises that still holds statutory records cannot be deleted out from under them", async () => {
+  const premises = await makePremises();
+  const { manager, admin } = await makeRoles(premises.id);
+
+  await manager.post("/api/incidents", {
+    premises_id: premises.id,
+    occurred_on: daysAgo(2),
+    incident_type: "near_miss",
+    description: "Recorded so this premises is not empty",
+  });
+
+  const refused = await admin.delete(`/api/premises/${premises.id}`);
+  assert.equal(refused.status, 409);
+  assert.match(refused.body.error.message, /1 incidents/);
+  assert.deepEqual(refused.body.error.details.blockers, ["1 incidents"]);
+});
+
 // --- the assessment lifecycle ----------------------------------------------
 
 test("an assessment is created as a draft and cannot be published straight into place", async () => {
@@ -312,6 +329,223 @@ test("naming a category of risk without saying why is refused", async () => {
     why_at_risk: "Unclear",
   });
   assert.equal(empty.status, 400);
+});
+
+test("a personal emergency evacuation plan claimed in place must be identified", async () => {
+  const premises = await makePremises({ employee_count: 20 });
+  const { manager } = await makeRoles(premises.id);
+  const assessment = await draftAssessment(manager, premises.id);
+
+  const unidentified = await manager.post("/api/fra-persons-at-risk", {
+    fire_risk_assessment_id: assessment.id,
+    group_description: "Wheelchair user, second floor office",
+    category: "mobility_impaired",
+    why_at_risk: "Cannot use the stair unaided",
+    peep_in_place: true,
+  });
+  assert.equal(unidentified.status, 422);
+  assert.match(unidentified.body.error.message, /peep_reference/);
+
+  const identified = await manager.post("/api/fra-persons-at-risk", {
+    fire_risk_assessment_id: assessment.id,
+    group_description: "Wheelchair user, second floor office",
+    category: "mobility_impaired",
+    why_at_risk: "Cannot use the stair unaided",
+    peep_in_place: true,
+    peep_reference: "PEEP-2026-014",
+  });
+  assert.equal(identified.status, 201);
+});
+
+test("a finding and a person at risk can be amended and removed while their assessment is still a draft", async () => {
+  const premises = await makePremises({ employee_count: 20 });
+  const { manager } = await makeRoles(premises.id);
+  const assessment = await draftAssessment(manager, premises.id);
+
+  const finding = await manager.post("/api/fra-significant-findings", {
+    fire_risk_assessment_id: assessment.id,
+    finding: "Draft finding, still being written up",
+  });
+  assert.equal(finding.status, 201);
+  const amended = await manager.patch(`/api/fra-significant-findings/${finding.body.data.id}`, {
+    finding: "Revised wording before the assessment is published",
+  });
+  assert.equal(amended.status, 200);
+  assert.equal((await manager.delete(`/api/fra-significant-findings/${finding.body.data.id}`)).status, 204);
+
+  const atRisk = await manager.post("/api/fra-persons-at-risk", {
+    fire_risk_assessment_id: assessment.id,
+    group_description: "Night cleaning contractors",
+    category: "contractor",
+    why_at_risk: "Unfamiliar with the building outside normal hours",
+  });
+  assert.equal(atRisk.status, 201);
+  assert.equal(
+    (
+      await manager.patch(`/api/fra-persons-at-risk/${atRisk.body.data.id}`, {
+        measures: "Site induction now covers the evacuation route",
+      })
+    ).status,
+    200,
+  );
+  assert.equal((await manager.delete(`/api/fra-persons-at-risk/${atRisk.body.data.id}`)).status, 204);
+});
+
+test("a finding recorded against an assessment that does not exist is refused", async () => {
+  const premises = await makePremises({ employee_count: 20 });
+  const { manager } = await makeRoles(premises.id);
+
+  const response = await manager.post("/api/fra-significant-findings", {
+    fire_risk_assessment_id: 999_999_999,
+    finding: "Orphaned finding",
+  });
+  assert.equal(response.status, 404);
+  assert.match(response.body.error.message, /fire risk assessment was not found/i);
+});
+
+test("publishing an assessment that is already recorded is refused", async () => {
+  const premises = await makePremises({ employee_count: 20 });
+  const { manager } = await makeRoles(premises.id);
+  const assessment = await publishedAssessment(manager, premises.id);
+
+  const response = await manager.post(`/api/fire-risk-assessments/${assessment.id}/publish`);
+  assert.equal(response.status, 409);
+  assert.match(response.body.error.message, /already current/);
+});
+
+test("the full assessment view assembles the findings with their measures, and the people at risk", async () => {
+  const premises = await makePremises({ employee_count: 20 });
+  const { manager } = await makeRoles(premises.id);
+  const assessment = await draftAssessment(manager, premises.id);
+
+  const finding = await manager.post("/api/fra-significant-findings", {
+    fire_risk_assessment_id: assessment.id,
+    finding: "Fire door propped open with a chair",
+  });
+  await manager.post("/api/fra-measures", {
+    finding_id: finding.body.data.id,
+    description: "Remove the chair and brief staff",
+    status: "taken",
+    completed_on: today,
+  });
+  await manager.post("/api/fra-persons-at-risk", {
+    fire_risk_assessment_id: assessment.id,
+    group_description: "Overnight security guard",
+    category: "lone_worker",
+    why_at_risk: "Works alone with no one else to raise the alarm",
+  });
+
+  const full = await manager.get(`/api/fire-risk-assessments/${assessment.id}/full`);
+  assert.equal(full.status, 200);
+  assert.equal(full.body.data.significant_findings.length, 1);
+  assert.equal(full.body.data.significant_findings[0].measures.length, 1);
+  assert.equal(full.body.data.significant_findings[0].measures[0].status, "taken");
+  assert.equal(full.body.data.persons_at_risk.length, 1);
+  assert.equal(full.body.data.persons_at_risk[0].category, "lone_worker");
+});
+
+test("a measure can be deleted while its assessment is a draft, but not once the assessment is superseded", async () => {
+  const premises = await makePremises({ employee_count: 20 });
+  const { manager } = await makeRoles(premises.id);
+
+  const draft = await draftAssessment(manager, premises.id);
+  const draftFinding = await manager.post("/api/fra-significant-findings", {
+    fire_risk_assessment_id: draft.id,
+    finding: "Combustible waste stored near the boiler",
+  });
+  const removable = await manager.post("/api/fra-measures", {
+    finding_id: draftFinding.body.data.id,
+    description: "Clear the waste immediately",
+    status: "taken",
+    completed_on: today,
+  });
+  assert.equal(removable.status, 201);
+  assert.equal((await manager.delete(`/api/fra-measures/${removable.body.data.id}`)).status, 204);
+
+  // Publish this assessment, then supersede it with a second one, so the
+  // first becomes superseded — closing its measures along with the rest of it.
+  const first = await publishedAssessment(manager, premises.id);
+  const firstFindings = await manager.get(
+    `/api/fra-significant-findings?fire_risk_assessment_id=${first.id}`,
+  );
+  const surviving = await manager.post("/api/fra-measures", {
+    finding_id: firstFindings.body.data[0].id,
+    description: "Fit additional signage",
+    status: "planned",
+    target_date: daysAhead(30),
+  });
+  assert.equal(surviving.status, 201);
+
+  const second = await draftAssessment(manager, premises.id);
+  await manager.post("/api/fra-significant-findings", {
+    fire_risk_assessment_id: second.id,
+    finding: "Supersedes the first",
+  });
+  const published = await manager.post(`/api/fire-risk-assessments/${second.id}/publish`, {
+    assessment_type: "review",
+  });
+  assert.equal(published.status, 200);
+
+  const closed = await manager.patch(`/api/fra-measures/${surviving.body.data.id}`, {
+    status: "taken",
+    completed_on: today,
+  });
+  assert.equal(closed.status, 409);
+  assert.match(closed.body.error.message, /superseded/);
+  assert.equal((await manager.delete(`/api/fra-measures/${surviving.body.data.id}`)).status, 409);
+});
+
+test("a fire safety arrangement in force can be amended, and removed while nothing is recorded against it", async () => {
+  const premises = await makePremises({ employee_count: 3 });
+  const { manager } = await makeRoles(premises.id);
+
+  const created = await manager.post("/api/fire-safety-arrangements", {
+    premises_id: premises.id,
+    schedule2_measure_code: "a",
+    planning: "Weekly visual check of extinguishers by the site manager",
+  });
+  assert.equal(created.status, 201);
+
+  const amended = await manager.patch(`/api/fire-safety-arrangements/${created.body.data.id}`, {
+    monitoring: "Logged in the site diary each week",
+  });
+  assert.equal(amended.status, 200);
+
+  const cleared = await manager.patch(`/api/fire-safety-arrangements/${created.body.data.id}`, {
+    planning: "",
+    monitoring: "",
+  });
+  assert.equal(cleared.status, 422);
+
+  assert.equal((await manager.delete(`/api/fire-safety-arrangements/${created.body.data.id}`)).status, 204);
+});
+
+test("a dangerous substance record can be amended, and each explosive-atmosphere field is checked independently", async () => {
+  const premises = await makePremises();
+  const { manager } = await makeRoles(premises.id);
+
+  const substance = await manager.post("/api/dangerous-substances", {
+    premises_id: premises.id,
+    name: "Isopropyl alcohol",
+    location: "Cleaning store",
+  });
+  assert.equal(substance.status, 201);
+
+  // Classification given, but not the notes explaining when the atmosphere
+  // can occur — the other half of DSEAR reg 7 and sch.2.
+  const missingNotes = await manager.patch(`/api/dangerous-substances/${substance.body.data.id}`, {
+    explosive_atmosphere_likely: true,
+    hazardous_area_classification: "Zone 2 within 0.5m of the open container",
+  });
+  assert.equal(missingNotes.status, 422);
+  assert.match(missingNotes.body.error.message, /explosive_atmosphere_notes/);
+
+  const complete = await manager.patch(`/api/dangerous-substances/${substance.body.data.id}`, {
+    explosive_atmosphere_likely: true,
+    hazardous_area_classification: "Zone 2 within 0.5m of the open container",
+    explosive_atmosphere_notes: "While decanting from the drum",
+  });
+  assert.equal(complete.status, 200);
 });
 
 // --- measures --------------------------------------------------------------
@@ -654,6 +888,258 @@ test("marking a check interval as statutory is refused, because none of them are
   assert.equal(uncited.status, 422);
 });
 
+test("marking a schedule statutory through an amendment is held to the same standard as creating it that way", async () => {
+  const premises = await makePremises();
+  const { manager, admin } = await makeRoles(premises.id);
+
+  const schedule = await manager.post("/api/check-schedules", {
+    premises_id: premises.id,
+    applies_to: "equipment_type:extinguisher",
+    check_type: "service",
+    interval_days: 365,
+    notes: tag("Not yet statutory"),
+  });
+  assert.equal(schedule.status, 201);
+
+  const byManager = await manager.patch(`/api/check-schedules/${schedule.body.data.id}`, {
+    is_statutory: true,
+  });
+  assert.equal(byManager.status, 403);
+
+  const uncited = await admin.patch(`/api/check-schedules/${schedule.body.data.id}`, {
+    is_statutory: true,
+  });
+  assert.equal(uncited.status, 422);
+
+  const cited = await admin.patch(`/api/check-schedules/${schedule.body.data.id}`, {
+    is_statutory: true,
+    recommended_by: "BS 5306-3",
+  });
+  assert.equal(cited.status, 200);
+});
+
+test("equipment marked in service cannot also carry a removal date", async () => {
+  const premises = await makePremises();
+  const { manager } = await makeRoles(premises.id);
+  const item = await manager.post("/api/equipment", {
+    premises_id: premises.id,
+    equipment_type: "extinguisher",
+    location: "Loading bay",
+  });
+  assert.equal(item.status, 201);
+
+  const contradiction = await manager.patch(`/api/equipment/${item.body.data.id}`, {
+    removed_on: daysAgo(1),
+  });
+  assert.equal(contradiction.status, 422);
+  assert.match(contradiction.body.error.message, /not in service/);
+});
+
+test("an equipment check can be amended, and is held to the same coherence rules", async () => {
+  const premises = await makePremises();
+  const { manager, assessor } = await makeRoles(premises.id);
+  const item = await manager.post("/api/equipment", {
+    premises_id: premises.id,
+    equipment_type: "extinguisher",
+    location: "Plant room",
+  });
+  const check = await assessor.post("/api/equipment-checks", {
+    equipment_id: item.body.data.id,
+    check_type: "visual",
+    performed_on: daysAgo(2),
+    performed_by_external: "Fire Safety Services Ltd",
+    outcome: "pass",
+  });
+  assert.equal(check.status, 201);
+
+  // Recording a remedy without saying what was done is refused on amendment,
+  // just as it is on creation.
+  const incomplete = await assessor.patch(`/api/equipment-checks/${check.body.data.id}`, {
+    remedied_on: today,
+  });
+  assert.equal(incomplete.status, 422);
+  assert.match(incomplete.body.error.message, /remedial_action/);
+
+  const amended = await assessor.patch(`/api/equipment-checks/${check.body.data.id}`, {
+    outcome: "pass_with_defects",
+    defects_found: "Pin seal missing",
+  });
+  assert.equal(amended.status, 200);
+  assert.equal(amended.body.data.defect_outstanding, true);
+});
+
+test("a check schedule attached to a check must actually cover that kind of check", async () => {
+  const premises = await makePremises();
+  const { manager, assessor } = await makeRoles(premises.id);
+
+  const wrongType = await manager.post("/api/check-schedules", {
+    premises_id: premises.id,
+    applies_to: "equipment_type:fire_door",
+    check_type: "visual",
+    interval_days: 30,
+    notes: tag("Fire door schedule"),
+  });
+  const wrongCheckType = await manager.post("/api/check-schedules", {
+    premises_id: premises.id,
+    applies_to: "equipment_type:extinguisher",
+    check_type: "service",
+    interval_days: 365,
+    notes: tag("Annual service schedule"),
+  });
+  const item = await manager.post("/api/equipment", {
+    premises_id: premises.id,
+    equipment_type: "extinguisher",
+    location: "Reception",
+  });
+
+  const mismatchedApplies = await assessor.post("/api/equipment-checks", {
+    equipment_id: item.body.data.id,
+    check_schedule_id: wrongType.body.data.id,
+    check_type: "visual",
+    performed_on: daysAgo(1),
+    performed_by_external: "Fire Safety Services Ltd",
+    outcome: "pass",
+  });
+  assert.equal(mismatchedApplies.status, 422);
+  assert.match(mismatchedApplies.body.error.message, /applies to/);
+
+  const mismatchedCheckType = await assessor.post("/api/equipment-checks", {
+    equipment_id: item.body.data.id,
+    check_schedule_id: wrongCheckType.body.data.id,
+    check_type: "visual",
+    performed_on: daysAgo(1),
+    performed_by_external: "Fire Safety Services Ltd",
+    outcome: "pass",
+  });
+  assert.equal(mismatchedCheckType.status, 422);
+  assert.match(mismatchedCheckType.body.error.message, /is for a service check/);
+});
+
+// --- escape routes and checks ------------------------------------------------
+
+test("an escape route check's next due date comes from the configured schedule", async () => {
+  const premises = await makePremises();
+  const { manager, assessor } = await makeRoles(premises.id);
+
+  const schedule = await manager.post("/api/check-schedules", {
+    premises_id: premises.id,
+    applies_to: "escape_route",
+    check_type: "walkthrough",
+    interval_days: 7,
+    notes: tag("Weekly walkthrough"),
+  });
+  assert.equal(schedule.status, 201);
+
+  const route = await manager.post("/api/escape-routes", {
+    premises_id: premises.id,
+    name: "Stair 2 to fire exit",
+    final_exit: "Rear yard",
+  });
+  assert.equal(route.status, 201);
+
+  const check = await assessor.post("/api/escape-route-checks", {
+    escape_route_id: route.body.data.id,
+    performed_on: daysAgo(3),
+    performed_by_id: null,
+    outcome: "pass",
+  });
+  assert.equal(check.status, 201, JSON.stringify(check.body));
+  assert.equal(check.body.data.next_due_on.slice(0, 10), daysAhead(4));
+});
+
+test("a failed escape route check must say what was found, and a pass must not", async () => {
+  const premises = await makePremises();
+  const { manager, assessor } = await makeRoles(premises.id);
+  const route = await manager.post("/api/escape-routes", {
+    premises_id: premises.id,
+    name: "Ground floor corridor",
+  });
+
+  const silentFailure = await assessor.post("/api/escape-route-checks", {
+    escape_route_id: route.body.data.id,
+    performed_on: daysAgo(1),
+    outcome: "fail",
+  });
+  assert.equal(silentFailure.status, 422);
+  assert.match(silentFailure.body.error.message, /obstructions_found/);
+
+  const contradiction = await assessor.post("/api/escape-route-checks", {
+    escape_route_id: route.body.data.id,
+    performed_on: daysAgo(1),
+    outcome: "pass",
+    obstructions_found: "Boxes stacked in the corridor",
+  });
+  assert.equal(contradiction.status, 422);
+
+  const honest = await assessor.post("/api/escape-route-checks", {
+    escape_route_id: route.body.data.id,
+    performed_on: daysAgo(1),
+    outcome: "fail",
+    obstructions_found: "Boxes stacked in the corridor",
+  });
+  assert.equal(honest.status, 201);
+  assert.equal(honest.body.data.obstruction_outstanding, true);
+
+  // Recording that it was cleared has to say what was done.
+  const incompleteRemedy = await assessor.patch(`/api/escape-route-checks/${honest.body.data.id}`, {
+    remedied_on: today,
+  });
+  assert.equal(incompleteRemedy.status, 422);
+  assert.match(incompleteRemedy.body.error.message, /remedial_action/);
+
+  const remedied = await assessor.patch(`/api/escape-route-checks/${honest.body.data.id}`, {
+    remedied_on: today,
+    remedial_action: "Boxes removed and stored in the plant room",
+  });
+  assert.equal(remedied.status, 200);
+  assert.equal(remedied.body.data.obstruction_outstanding, false);
+});
+
+test("a check cannot be recorded against an escape route that is out of service", async () => {
+  const premises = await makePremises();
+  const { manager, assessor } = await makeRoles(premises.id);
+  const route = await manager.post("/api/escape-routes", {
+    premises_id: premises.id,
+    name: "Disused stair",
+  });
+  const removed = await manager.patch(`/api/escape-routes/${route.body.data.id}`, {
+    in_service: false,
+  });
+  assert.equal(removed.status, 200);
+
+  const check = await assessor.post("/api/escape-route-checks", {
+    escape_route_id: route.body.data.id,
+    performed_on: today,
+    outcome: "pass",
+  });
+  assert.equal(check.status, 409);
+});
+
+test("an escape route with a check history is taken out of service, not deleted, and a completed check is never deleted", async () => {
+  const premises = await makePremises();
+  const { manager, assessor } = await makeRoles(premises.id);
+  const route = await manager.post("/api/escape-routes", {
+    premises_id: premises.id,
+    name: "Stair 3",
+  });
+  const routeId = route.body.data.id;
+
+  const check = await assessor.post("/api/escape-route-checks", {
+    escape_route_id: routeId,
+    performed_on: daysAgo(2),
+    outcome: "pass",
+  });
+  assert.equal(check.status, 201);
+
+  const refusedRouteDelete = await manager.delete(`/api/escape-routes/${routeId}`);
+  assert.equal(refusedRouteDelete.status, 409);
+  assert.match(refusedRouteDelete.body.error.message, /reg 13/);
+
+  const refusedCheckDelete = await manager.delete(`/api/escape-route-checks/${check.body.data.id}`);
+  assert.equal(refusedCheckDelete.status, 409);
+  assert.match(refusedCheckDelete.body.error.message, /reg 13/);
+});
+
 // --- safety roles ----------------------------------------------------------
 
 test("a nominated person must be an employee, with recorded competence", async () => {
@@ -740,6 +1226,28 @@ test("a person who appears in the records is closed rather than deleted", async 
 
   const closed = await manager.patch(`/api/people/${person.id}`, { ended_on: today });
   assert.equal(closed.status, 200);
+});
+
+test("a person's end date cannot precede their start date, whether created or amended through the API", async () => {
+  const { manager } = await makeRoles();
+
+  const backwards = await manager.post("/api/people", {
+    full_name: tag("Backwards Dates"),
+    started_on: daysAgo(10),
+    ended_on: daysAgo(20),
+  });
+  assert.equal(backwards.status, 422);
+
+  const created = await manager.post("/api/people", {
+    full_name: tag("Forward Dates"),
+    started_on: daysAgo(30),
+  });
+  assert.equal(created.status, 201);
+
+  const amended = await manager.patch(`/api/people/${created.body.data.id}`, {
+    ended_on: daysAgo(40),
+  });
+  assert.equal(amended.status, 422);
 });
 
 // --- drills, training, arrangements ----------------------------------------
@@ -985,6 +1493,93 @@ test("an explosive atmosphere must be classified", async () => {
   assert.equal(classified.status, 201);
 });
 
+test("a plain incident with nothing reportable about it can simply be recorded", async () => {
+  const premises = await makePremises();
+  const { manager } = await makeRoles(premises.id);
+
+  const created = await manager.post("/api/incidents", {
+    premises_id: premises.id,
+    occurred_on: daysAgo(3),
+    incident_type: "near_miss",
+    description: "A pallet nearly fell from racking; no one was hurt",
+  });
+  assert.equal(created.status, 201);
+  assert.equal(created.body.data.riddor_report_outstanding, false);
+
+  // It can still be amended afterwards, under the same coherence rules.
+  const amended = await manager.patch(`/api/incidents/${created.body.data.id}`, {
+    actions_taken: "Racking inspected and re-secured",
+  });
+  assert.equal(amended.status, 200);
+});
+
+test("a RIDDOR reference without a report date is refused, because the reference names a report that has no date", async () => {
+  const premises = await makePremises();
+  const { manager } = await makeRoles(premises.id);
+
+  const response = await manager.post("/api/incidents", {
+    premises_id: premises.id,
+    occurred_on: daysAgo(5),
+    incident_type: "dangerous_occurrence",
+    description: "Gas cylinder valve failed during a routine change",
+    riddor_reportable: true,
+    riddor_particulars: "Dangerous occurrence, sch.2 para 9",
+    riddor_reference: "RID-2026-0100",
+  });
+  assert.equal(response.status, 422);
+  assert.match(response.body.error.message, /riddor_reported_on must record/);
+});
+
+test("a withdrawn notice cannot also claim to be in force", async () => {
+  const premises = await makePremises();
+  const { manager } = await makeRoles(premises.id);
+
+  const notice = await manager.post("/api/enforcement-notices", {
+    premises_id: premises.id,
+    notice_type: "prohibition",
+    served_on: daysAgo(10),
+    requirements: "Cease use of the mezzanine until remedial works are complete",
+  });
+  assert.equal(notice.status, 201);
+
+  const contradiction = await manager.patch(`/api/enforcement-notices/${notice.body.data.id}`, {
+    withdrawn_on: daysAgo(1),
+  });
+  assert.equal(contradiction.status, 422);
+  assert.match(contradiction.body.error.message, /is not in force/);
+});
+
+test("an enforcement visit is recorded like anything else, and cannot be dated in the future", async () => {
+  const premises = await makePremises();
+  const { manager } = await makeRoles(premises.id);
+
+  const future = await manager.post("/api/enforcement-visits", {
+    premises_id: premises.id,
+    authority: "Scottish Fire and Rescue Service",
+    visited_on: daysAhead(1),
+  });
+  assert.equal(future.status, 422);
+
+  const visit = await manager.post("/api/enforcement-visits", {
+    premises_id: premises.id,
+    authority: "Scottish Fire and Rescue Service",
+    officer_name: "J. Reid",
+    visited_on: daysAgo(2),
+    purpose: "Routine audit",
+  });
+  assert.equal(visit.status, 201);
+
+  const amended = await manager.patch(`/api/enforcement-visits/${visit.body.data.id}`, {
+    findings: "No contraventions noted",
+  });
+  assert.equal(amended.status, 200);
+
+  const amendedToFuture = await manager.patch(`/api/enforcement-visits/${visit.body.data.id}`, {
+    visited_on: daysAhead(2),
+  });
+  assert.equal(amendedToFuture.status, 422);
+});
+
 test("a written policy is required, and kept, where five or more are employed", async () => {
   const premises = await makePremises({ employee_count: 20 });
   const { manager } = await makeRoles(premises.id);
@@ -1033,6 +1628,71 @@ test("the compliance position is computed by the API", async () => {
   assert.equal(afterByKey.fire_risk_assessment.status, "ok");
   assert.equal(afterByKey.emergency_procedures.status, "ok");
   assert.ok(after.body.data.summary.ok >= 2);
+});
+
+test("the compliance view reports training and drills once some are recorded, overdue or not", async () => {
+  const premises = await makePremises({ employee_count: 20 });
+  const { manager } = await makeRoles(premises.id);
+  const person = await makePerson();
+
+  await manager.post("/api/training-records", {
+    premises_id: premises.id,
+    person_id: person.id,
+    training_type: "induction",
+    delivered_on: daysAgo(400),
+    next_due_on: daysAgo(30),
+  });
+  await manager.post("/api/fire-drills", {
+    premises_id: premises.id,
+    held_at: daysAgo(20) + "T09:00:00Z",
+  });
+
+  const before = await manager.get(`/api/premises/${premises.id}/compliance`);
+  const beforeByKey = Object.fromEntries(before.body.data.checks.map((c) => [c.key, c]));
+  assert.equal(beforeByKey.training.status, "attention");
+  assert.match(beforeByKey.training.summary, /past their refresher date/);
+
+  // A schedule specific to this premises overrides the sample data's
+  // organisation-wide default (see backend/src/db/sample-data.sql), so this
+  // is deterministic regardless of what else the shared database holds. A
+  // 7-day interval against a drill held 20 days ago is overdue.
+  await manager.post("/api/check-schedules", {
+    premises_id: premises.id,
+    applies_to: "fire_drill",
+    check_type: "walkthrough",
+    interval_days: 7,
+    notes: tag("Weekly drill policy for this premises"),
+  });
+
+  const after = await manager.get(`/api/premises/${premises.id}/compliance`);
+  const afterByKey = Object.fromEntries(after.body.data.checks.map((c) => [c.key, c]));
+  assert.equal(afterByKey.fire_drills.status, "attention");
+  assert.match(afterByKey.fire_drills.summary, /the next was due/);
+});
+
+test("the compliance view catches a recorded assessment left unrecorded once the duty to record starts applying", async () => {
+  const premises = await makePremises({ employee_count: 3 });
+  const { manager, admin } = await makeRoles(premises.id);
+
+  // The duty to record does not apply yet, so this can be published with no
+  // significant findings and no recorded_on date.
+  const draft = await manager.post("/api/fire-risk-assessments", {
+    premises_id: premises.id,
+    carried_out_on: daysAgo(3),
+    assessor_external: "Competent Assessors Ltd",
+  });
+  const published = await manager.post(`/api/fire-risk-assessments/${draft.body.data.id}/publish`);
+  assert.equal(published.status, 200);
+  assert.equal(published.body.data.recorded_on, null);
+
+  // Growing past five employees turns the recording duty on retrospectively,
+  // and the existing assessment's lack of a recorded_on date is now a gap.
+  await admin.patch(`/api/premises/${premises.id}`, { employee_count: 20 });
+
+  const compliance = await manager.get(`/api/premises/${premises.id}/compliance`);
+  const byKey = Object.fromEntries(compliance.body.data.checks.map((c) => [c.key, c]));
+  assert.equal(byKey.assessment_recorded.status, "missing");
+  assert.match(byKey.assessment_recorded.summary, /has no recorded_on date/);
 });
 
 test("a small premises is told the written policy is not required", async () => {
