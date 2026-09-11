@@ -5,8 +5,7 @@ backend and database — the same Supabase project `backend/.env` already
 points at, and the same one `backend/tests/*.test.mjs` runs against. Nothing
 here is stubbed or mocked: `tests/global.setup.js` creates a marker-tagged
 premises and two accounts (admin, viewer) directly in the database, the way
-`backend/tests/helpers.mjs` does, then signs in through the actual login form
-for each and saves the session. `global-teardown.js` removes everything that
+`backend/tests/helpers.mjs` does. `global-teardown.js` removes everything that
 setup created once the run finishes.
 
 ## Setup
@@ -40,19 +39,40 @@ hash.
 ## Layout
 
 - `tests/global.setup.js` — the "setup" project: provisions test accounts and
-  saves `.auth/admin.json` / `.auth/viewer.json` (browser storage state, so
-  the other specs start already signed in) and `.auth/fixtures.json` (the
-  credentials and ids they need).
+  writes `.auth/fixtures.json` (their credentials and ids) plus a saved
+  session for the viewer account only, `.auth/viewer.json` (see the file for
+  why admin doesn't get one too).
+- `tests/helpers/fixtures.js` — reads those fixtures, and a `signIn(page, {
+  email, password })` helper every admin-scoped test uses to log in fresh.
 - `tests/login.spec.js` — unauthenticated: the login form itself, a wrong
   password, sign-in and sign-out.
 - `tests/premises.spec.js` — signed in as admin: create, edit and delete a
   premises through the UI.
+- `tests/fra-lifecycle.spec.js` — signed in as admin: a fire risk assessment's
+  full draft → current → superseded lifecycle, including the backend's
+  publish preconditions (a significant finding, recorded assessor competence)
+  and that a recorded assessment can no longer have those fields edited.
 - `tests/role-access.spec.js` — signed in as viewer: the frontend actually
   hides admin-only navigation and actions, and 404s an admin-only route,
   rather than relying on the API alone to refuse it.
 - `global-teardown.js` — deletes everything `global.setup.js` created.
 
 `.auth/` is gitignored — it's per-run session state, not something to commit.
+
+## Why admin has no saved session, but viewer does
+
+A saved session's refresh cookie is single-use: the backend rotates it on
+every refresh and treats a second presentation as theft, which revokes the
+whole session (`backend/src/auth/authService.js`'s `refresh()`). That's fine
+when exactly one test file ever restores a given saved session — role-access.spec.js
+is the only file that loads `viewer.json`, in one shared browser context. It
+broke the moment a *second* admin-scoped file (`fra-lifecycle.spec.js`) was
+added alongside `premises.spec.js`: both loaded `admin.json` into their own
+separate context, raced to consume the same cookie, and the loser's session
+was revoked mid-test. Rather than re-litigate that every time a new
+admin-scoped test file is added, every one of them logs in fresh via
+`signIn()` instead — one extra request, and no ceiling on how many test files
+can use that role.
 
 ## A rate limit you may notice
 

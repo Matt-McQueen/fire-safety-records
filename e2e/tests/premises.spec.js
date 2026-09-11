@@ -1,11 +1,10 @@
-// Runs signed in as the admin account tests/global.setup.js created and
-// saved to .auth/admin.json - a manager-or-above role, which is what
-// premises create/edit/delete require (see PremisesFormPage.tsx).
+// Signs in fresh as the admin account tests/global.setup.js created - a
+// manager-or-above role, which is what premises create/edit/delete require
+// (see PremisesFormPage.tsx). A fresh login rather than a saved session: see
+// tests/global.setup.js for why admin has no saved session to restore.
 
 import { test, expect } from "@playwright/test";
-import { loadFixtures, authStatePath } from "./helpers/fixtures.js";
-
-test.use({ storageState: authStatePath("admin") });
+import { loadFixtures, signIn } from "./helpers/fixtures.js";
 
 const EDITED_TOWN = "Edinburgh";
 
@@ -13,12 +12,15 @@ const EDITED_TOWN = "Edinburgh";
 // ("premises WHERE name LIKE '[marker]%'") also catches it if the test
 // itself fails before reaching its own delete step.
 let NAME;
+let fixtures;
 test.beforeAll(async () => {
-  const fixtures = await loadFixtures();
+  fixtures = await loadFixtures();
   NAME = `[${fixtures.marker}] Playwright CRUD Test`;
 });
 
 test("create, edit and delete a premises through the UI", async ({ page }) => {
+  await signIn(page, { email: fixtures.admin.email, password: fixtures.password });
+
   await page.goto("/premises");
   await page.getByRole("button", { name: "+ New premises" }).click();
   await expect(page).toHaveURL("/premises/new");

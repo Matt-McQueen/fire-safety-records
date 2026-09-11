@@ -17,7 +17,7 @@
 // own fresh login instead of reusing this file's session.
 
 import { test, expect } from "@playwright/test";
-import { authStatePath, loadFixtures } from "./helpers/fixtures.js";
+import { authStatePath, loadFixtures, signIn } from "./helpers/fixtures.js";
 
 test.describe.configure({ mode: "serial" });
 
@@ -54,11 +54,7 @@ test("an admin-only route 404s for a viewer typing the URL directly", async ({ b
   const freshContext = await browser.newContext();
   const freshPage = await freshContext.newPage();
 
-  await freshPage.goto("/login");
-  await freshPage.getByLabel("Email").fill(fixtures.viewer.email);
-  await freshPage.getByLabel("Password").fill(fixtures.password);
-  await freshPage.getByRole("button", { name: "Sign in" }).click();
-  await freshPage.waitForURL("/");
+  await signIn(freshPage, { email: fixtures.viewer.email, password: fixtures.password });
 
   await freshPage.goto("/admin/users");
   await expect(freshPage.getByText("Page not found")).toBeVisible();

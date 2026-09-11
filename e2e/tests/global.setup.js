@@ -3,10 +3,19 @@
 //
 // It provisions test accounts the same way backend/tests/helpers.mjs does -
 // inserted directly into the database, namespaced with a per-run marker so
-// cleanup (global-teardown.js) can find exactly what this run added - then
-// signs in through the real login form once per role and saves the resulting
-// session (an httpOnly refresh cookie) to disk, so the other spec files can
-// start already authenticated instead of repeating the login flow.
+// cleanup (global-teardown.js) can find exactly what this run added.
+//
+// Only the viewer account also gets a saved session (.auth/viewer.json): its
+// refresh cookie is single-use (the backend rotates it on every refresh and
+// treats a second presentation as theft - see backend/src/auth/authService.js's
+// refresh()), and role-access.spec.js is the *only* file that ever loads it,
+// in one shared context. Deliberately not doing the same for admin: two test
+// files loading the same saved admin cookie into two separate contexts race
+// to consume it, and the loser's "already used" 401 revokes the whole session
+// - which is exactly what happened here once a second admin-scoped spec file
+// (fra-lifecycle.spec.js) was added alongside premises.spec.js. Every
+// admin-scoped test logs in fresh instead, which costs one extra request but
+// scales to any number of test files without limit.
 
 import { test as setup } from "@playwright/test";
 import path from "node:path";
@@ -32,7 +41,7 @@ async function importBackendModule(relativePath) {
 // database's test accounts.
 const PASSWORD = "correct-horse-battery-staple-42";
 
-setup("provision test accounts and sign in", async ({ page, browser }) => {
+setup("provision test accounts and sign in", async ({ browser }) => {
   const { pool } = await importBackendModule("src/db/pool.js");
   const { hashPassword } = await importBackendModule("src/auth/passwords.js");
 
@@ -85,8 +94,6 @@ setup("provision test accounts and sign in", async ({ page, browser }) => {
       2,
     ),
   );
-
-  await signInAndSaveState(page, admin.email, PASSWORD, path.join(authDir, "admin.json"));
 
   const viewerContext = await browser.newContext();
   const viewerPage = await viewerContext.newPage();
