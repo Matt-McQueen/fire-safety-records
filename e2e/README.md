@@ -97,6 +97,10 @@ hash.
   React has mounted - covering index.html's pre-React inline script as well
   as lib/ThemeContext.tsx. Doesn't sign in for the first check: theme applies
   outside auth entirely.
+- `tests/mobile-nav.spec.js` — below Tailwind's lg breakpoint, AppShell swaps
+  the always-visible sidebar for a hamburger-triggered slide-out panel;
+  opening it, navigating from it, and dismissing it via the backdrop all
+  work, and above the breakpoint there's a static sidebar and no hamburger.
 - `global-teardown.js` — deletes everything `global.setup.js` created.
 
 `.auth/` is gitignored — it's per-run session state, not something to commit.
@@ -116,19 +120,36 @@ admin-scoped test file is added, every one of them logs in fresh via
 `signIn()` instead — one extra request, and no ceiling on how many test files
 can use that role.
 
-## Why `workers` is capped
+## A known limitation: the full suite can still hang under this database's real capacity
 
 This project's Supabase pooler runs in session mode with a hard 15-client
-cap for the whole project, shared by everything talking to it at once: every
-Playwright worker's browser, the backend's own connection pool
-(`PG_POOL_MAX=10`), and anything else hitting this database at the same time.
-Past about 4 workers that contention got bad enough to occasionally produce
-a stale read - `fra-lifecycle.spec.js`'s publish step, in particular, would
-sometimes see zero significant findings for an assessment moments after its
-own earlier request had added one. `playwright.config.js` caps `workers` at
-4 for that reason; raising `PG_POOL_MAX` instead only made it worse by
-hitting the pooler's own ceiling directly (`EMAXCONNSESSION: max clients
-reached in session mode`).
+cap for the whole project - and querying `pg_stat_activity` directly shows
+roughly ten of those permanently held by the project's own platform
+connections (PostgREST, pg_cron, pg_net, Supavisor - the pooler itself - and
+its metrics exporter), not anything this suite or the app opened. The actual
+headroom for the backend process is a handful of connections, not fifteen,
+so `playwright.config.js` caps `workers` at 4, sets the backend's own
+`PG_POOL_MAX` to 5 for this suite specifically (render.yaml already uses the
+same value in production, for the same reason), and raises both the
+per-test `timeout` (60s) and the default assertion `expect.timeout` (10s)
+well past Playwright's defaults, since a query here can be queued behind
+others' for genuinely longer than either default allows on an otherwise
+ordinary run.
+
+Even with all of that, running the **full** suite together can still
+occasionally hang for 60+ seconds on an unrelated page load or query - seen
+on both `/admin/audit-log` and a plain premises picker - confirmed to be
+contention from the full suite's combined load and not a bug in whichever
+test happened to be running: the same test, run alone or in a small group,
+passes reliably every time (checked by re-running `role-capabilities.spec.js`
+alone three times in a row after it had just hung as part of a full run). If
+a full run hangs or times out, it's very likely this rather than a real
+regression - rerunning it, or running the affected file alone, is the way to
+tell the difference. This is a real constraint of this specific shared
+database's capacity relative to how much this suite has grown, not something
+client-side configuration alone fully solves - narrowing it further would
+need visibility this suite doesn't have into what else is using the
+project's connections at the same time.
 
 ## A couple hundred stale accounts already in this database
 
