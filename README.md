@@ -5,7 +5,9 @@ with an Express backend (`backend/`) and a React (Vite) frontend
 (`frontend/`). The database lives in Supabase.
 
 The schema is in [`backend/src/db/schema.sql`](backend/src/db/schema.sql)
-and the API in [`backend/src/`](backend/src). The web UI is not built yet.
+and the API in [`backend/src/`](backend/src). The web UI lives in
+[`frontend/src/`](frontend/src) — React 19, TypeScript and Tailwind CSS 4,
+built on Vite.
 
 **All access to the database goes through the API, and all of the business
 rules live there.** Nothing that reads or writes these records talks to
@@ -294,6 +296,52 @@ the response. Passwords, tokens and hashes are redacted before anything is
 written. Nothing in the API writes to the trail directly, and nothing
 deletes from it.
 
+## Frontend
+
+React 19, TypeScript and Tailwind CSS 4, built with Vite and React Router.
+There is no local component state pretending to be authorisation: every
+screen calls the API above and shows whatever it answers, access token
+included only in memory and never in `localStorage`.
+
+```bash
+cd frontend
+npm install
+npm run dev      # http://localhost:5173, proxying /api to the backend on :3001
+npm run build    # type-checks (tsc -b) then produces frontend/dist
+```
+
+Structure, in `frontend/src/`:
+
+- `lib/` — the API client (`http.ts` handles the access-token refresh-and-retry
+  cycle transparently), auth and premises React contexts, and the query client.
+- `resources/` — a declarative field/column/filter config per resource, close
+  enough to the matching `backend/src/domain/resources/*.js` definition that
+  the two should be read side by side when either changes. This drives the
+  generic list and create/edit pages.
+- `components/resource/` — the generic engine: a table, a field-driven form,
+  and a nested child-record form (a finding under an assessment, a check
+  under a piece of equipment).
+- `pages/` — bespoke pages for premises (with the compliance checklist),
+  fire risk assessments (the full draft → publish → current → superseded
+  lifecycle, with findings, measures and persons at risk managed inline),
+  equipment and escape routes (each with their check history), and user
+  administration; every other resource is served by the generic engine under
+  `pages/resource/`.
+
+The one hard-coded assumption worth knowing: **the frontend does not
+duplicate a single business rule.** Required-looking fields are marked from
+the zod schemas for a decent form, but what actually decides whether a
+record is accepted is always the API's answer — a 422 `rule_violation` is
+rendered from `error.details.fields` and `error.message` rather than
+pre-empted client-side. That is deliberate, not an oversight: see the
+disclaimer at the top of this file.
+
+Deployment is Cloudflare Pages, per [`render.yaml`](render.yaml)'s
+neighbour — `frontend/functions/api/[[path]].js` proxies `/api/*` to the
+Render backend so the refresh cookie stays first-party (see the comment in
+that file for why). Set the Pages project's `API_ORIGIN` env var to the
+Render service URL, and the backend's `CORS_ORIGINS` to the Pages URL.
+
 ## Tests
 
 ```bash
@@ -314,11 +362,14 @@ so a run leaves the database as it found it.
 - [x] Sample data and seed script
 - [x] API — authentication, authorisation, CRUD for every table, the
       business rules, compliance reporting and an audit trail
-- [ ] Web UI
+- [x] Web UI — sign-in, the compliance dashboard, premises, the fire risk
+      assessment lifecycle, equipment/escape route check histories, user
+      administration and the audit log, plus a generic list/create/edit
+      view for every other resource
 
-`frontend/src/App.jsx` is still the original scaffold and calls
-`/api/items`, an endpoint from the demo schema that no longer exists. It
-needs rewriting against the API above.
+Not yet built out: bulk actions, an in-app view of the machine-readable
+`GET /api/` index, and UI tests (the API's 86 tests are the coverage that
+exists today).
 
 ## Disclaimer
 

@@ -1,14 +1,20 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+}
+
+html {
+  color-scheme: light;
+}
+
 body {
-  margin: 0;
-  background: #f7f7f8;
-  color: #1a1a1a;
+  background-color: var(--color-slate-50);
 }
 
-input {
-  padding: 0.4rem;
-}
-
-button {
-  padding: 0.4rem 0.8rem;
-  cursor: pointer;
+/* Firefox: form control accents match the app's brand colour. */
+input,
+select,
+textarea {
+  accent-color: var(--color-red-700);
 }
