@@ -56,6 +56,11 @@ export default function ResourceFormPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["resource-list", config.name] });
+      // Without this, revisiting this same record's edit page serves this
+      // page's now-stale copy for up to staleTime (15s, see
+      // lib/queryClient.ts) instead of what was just saved - the same gap
+      // PremisesFormPage.tsx had for its own single-record query.
+      if (!isNew) queryClient.invalidateQueries({ queryKey: ["resource", config.name, id] });
       navigate(`/records/${config.name}`);
     },
     onError: (err) => setSubmitError(err),

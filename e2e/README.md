@@ -99,6 +99,15 @@ hash.
   place in the compliance checklist through all three statuses - "missing"
   with none recorded, "ok" once one is, "attention" once one is actually
   overdue - agreeing with that record's own "Overdue" badge on the list.
+- `tests/enforcement-visit-lifecycle.spec.js` — the simplest record in this
+  domain: no status machine, no compliance tie-in, and exactly one rule (a
+  visit can't be dated in the future). What's actually worth pinning down is
+  the role boundary: creating one needs manager specifically, one rank above
+  what an assessor can reach - unlike a fire risk assessment draft or a piece
+  of equipment, which an assessor can create outright. Also caught a real
+  bug: editing one and revisiting its own edit page showed the pre-edit
+  values back, the generic engine's version of the gap `PremisesFormPage.tsx`
+  had for its own page - see the fix below.
 - `tests/compliance-dashboard.spec.js` — signed in as admin, on a dedicated
   premises of its own: the dashboard's computed compliance checklist
   (`GET /api/premises/:id/compliance`) matches a freshly created premises'
@@ -207,6 +216,16 @@ hit a conflict from its own first attempt rather than a clean rerun. Making
 that safe would mean revisiting how every spec file tags what it creates,
 which is a larger, deliberate change and not one to make as a side effect of
 adding another test.
+
+Update at 30 spec files: a full run failed 10 of them at once (a third of
+the suite) plus 3 "did not run", and took two and a half minutes instead of
+the usual well under one. Still not a regression - the same affected files
+passed immediately when rerun alone or in a small group - but the trend from
+the last update has continued in the same direction: this shared database's
+real capacity is a harder ceiling on how large this suite can get away with
+running all at once than any client-side tuning here has been able to move.
+Past a certain size, treating a full run's result at face value stops being
+reasonable without also checking whether the failures clear on their own.
 
 One symptom worth naming so it doesn't look like a separate problem: if this
 hits the *first* test in `role-access.spec.js` (its tests share one browser
