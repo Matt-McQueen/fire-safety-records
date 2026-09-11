@@ -65,6 +65,10 @@ hash.
   a check has to say what was found for anything but a pass, a check history
   blocks deleting the route outright, and "obstruction outstanding" tracks
   the most recent check.
+- `tests/compliance-dashboard.spec.js` — signed in as admin, on a dedicated
+  premises of its own: the dashboard's computed compliance checklist
+  (`GET /api/premises/:id/compliance`) matches a freshly created premises'
+  actual position, and recording something it was missing changes it.
 - `tests/role-access.spec.js` — signed in as viewer: the frontend actually
   hides admin-only navigation and actions, and 404s an admin-only route,
   rather than relying on the API alone to refuse it.
