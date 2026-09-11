@@ -83,6 +83,11 @@ hash.
   own password: a wrong current password and an unchanged new one are both
   refused, and a real change signs out old sessions - the old password stops
   working and the new one signs in.
+- `tests/role-capabilities.spec.js` — the two roles in between viewer and
+  admin: an assessor may create and amend records but not delete or publish
+  them, and a manager may also do those - except deleting a premises
+  outright, which needs admin specifically, unlike equipment or a draft
+  assessment.
 - `tests/role-access.spec.js` — signed in as viewer: the frontend actually
   hides admin-only navigation and actions, and 404s an admin-only route,
   rather than relying on the API alone to refuse it.
