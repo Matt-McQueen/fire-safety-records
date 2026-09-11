@@ -61,6 +61,10 @@ hash.
   found; a check history then blocks deleting the equipment outright (only
   taking it out of service is left); and the equipment's "defect outstanding"
   status tracks its most recent check, not its oldest unresolved one.
+- `tests/escape-route-checks.spec.js` — the same pattern for an escape route:
+  a check has to say what was found for anything but a pass, a check history
+  blocks deleting the route outright, and "obstruction outstanding" tracks
+  the most recent check.
 - `tests/role-access.spec.js` — signed in as viewer: the frontend actually
   hides admin-only navigation and actions, and 404s an admin-only route,
   rather than relying on the API alone to refuse it.
