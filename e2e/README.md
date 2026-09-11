@@ -65,6 +65,12 @@ hash.
   a check has to say what was found for anything but a pass, a check history
   blocks deleting the route outright, and "obstruction outstanding" tracks
   the most recent check.
+- `tests/escape-route-lifecycle.spec.js` — the record's own lifecycle rather
+  than its check history: its full field set saves and reads back, going out
+  of and back into service both just work (there's no beforeUpdate rule on
+  escape_routes, only beforeDelete), and - never given a check - it can
+  actually be deleted, which escape-route-checks.spec.js's route never
+  reaches.
 - `tests/compliance-dashboard.spec.js` — signed in as admin, on a dedicated
   premises of its own: the dashboard's computed compliance checklist
   (`GET /api/premises/:id/compliance`) matches a freshly created premises'
