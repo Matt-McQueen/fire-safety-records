@@ -53,7 +53,10 @@ export default function ResourceListPage() {
     const next = new URLSearchParams(searchParams);
     if (value === undefined || value === "") next.delete(key);
     else next.set(key, value);
-    next.delete("offset");
+    // Changing a filter, the search term or the sort starts back at page one;
+    // changing the offset itself (Pagination's Next/Previous) must not then
+    // wipe out the very change just made.
+    if (key !== "offset") next.delete("offset");
     setSearchParams(next);
   }
 
