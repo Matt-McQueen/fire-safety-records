@@ -86,6 +86,12 @@ hash.
   retention rule in this domain - it can't be deleted inside RIDDOR 2013 reg
   12's three-year mark regardless of role, admin included; contrasted with an
   ordinary, non-reportable incident, which carries no such restriction.
+- `tests/fire-drills-lifecycle.spec.js` — a drill that found no issues is a
+  clean record, but one that found issues and doesn't say what was done
+  about them is refused (reg 14(1): a drill is how the procedures actually
+  working is tested, and a record of a problem with nothing done about it
+  isn't evidence of that); also covers fire_drills' place in the compliance
+  checklist as a live check - "missing" with none recorded, "ok" once one is.
 - `tests/compliance-dashboard.spec.js` — signed in as admin, on a dedicated
   premises of its own: the dashboard's computed compliance checklist
   (`GET /api/premises/:id/compliance`) matches a freshly created premises'
@@ -176,6 +182,13 @@ database's capacity relative to how much this suite has grown, not something
 client-side configuration alone fully solves - narrowing it further would
 need visibility this suite doesn't have into what else is using the
 project's connections at the same time.
+
+One symptom worth naming so it doesn't look like a separate problem: if this
+hits the *first* test in `role-access.spec.js` (its tests share one browser
+context in `test.describe.configure({ mode: "serial" })`), Playwright skips
+the rest of that file as "did not run" rather than attempting them - that's
+the same contention, not additional breakage, and the same rerun-alone check
+applies.
 
 ## A couple hundred stale accounts already in this database
 
