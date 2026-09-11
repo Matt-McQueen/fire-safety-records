@@ -349,12 +349,29 @@ cd backend
 npm test
 ```
 
-86 tests covering the authentication flows, the role and premises
-boundaries, input handling, and each of the business rules above. They run
-against the real database, because premises scoping, transactional rules,
-generated columns and foreign keys are not things a stubbed pool would
-exercise. Everything a run creates is namespaced and removed afterwards,
-so a run leaves the database as it found it.
+That runs two suites. `npm run test:integration` drives the authentication
+flows, the role and premises boundaries, input handling, and each of the
+business rules above through the real API and a real database, because
+premises scoping, transactional rules, generated columns and foreign keys
+are not things a stubbed pool would exercise — everything a run creates is
+namespaced and removed afterwards, so a run leaves the database as it found
+it. `npm run test:unit` (`backend/tests/unit/`) covers the same layer's
+pure logic in isolation — date rules, request validation, password hashing
+and policy, JWT signing and verification, the premises-access checks, the
+Postgres-error-to-response mapping and the audit trail's redaction — with
+no database and no network, so it runs in well under a second and is what
+to reach for while changing that logic.
+
+```bash
+cd frontend
+npm test
+```
+
+Vitest and React Testing Library, covering the parts of the frontend that
+do not need a browser attached to a running API: the HTTP client's
+token-refresh-and-retry behaviour, the session store, the auth service, the
+role-ranking helper that mirrors the backend's, the resource configs that
+drive the generic list/create/edit pages, and a shared UI component.
 
 ## Status
 
@@ -368,8 +385,8 @@ so a run leaves the database as it found it.
       view for every other resource
 
 Not yet built out: bulk actions, an in-app view of the machine-readable
-`GET /api/` index, and UI tests (the API's 86 tests are the coverage that
-exists today).
+`GET /api/` index, and end-to-end/browser UI tests — the frontend's Vitest
+suite covers its logic, not rendered pages driven through a browser.
 
 ## Disclaimer
 

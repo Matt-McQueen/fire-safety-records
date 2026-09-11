@@ -14,7 +14,9 @@
     "seed:clear": "node scripts/seed.mjs --clear",
     "auth:init": "node scripts/auth-setup.mjs",
     "auth:user": "node scripts/auth-setup.mjs",
-    "test": "node --test --test-concurrency=1 tests/*.test.mjs",
+    "test": "npm run test:unit && npm run test:integration",
+    "test:unit": "node --test tests/unit/*.test.mjs",
+    "test:integration": "node --test --test-concurrency=1 tests/*.test.mjs",
     "test:watch": "node --test --watch --test-concurrency=1 tests/*.test.mjs"
   },
   "dependencies": {
