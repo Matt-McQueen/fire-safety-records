@@ -52,6 +52,10 @@ hash.
   full draft → current → superseded lifecycle, including the backend's
   publish preconditions (a significant finding, recorded assessor competence)
   and that a recorded assessment can no longer have those fields edited.
+- `tests/resource-engine.spec.js` — signed in as admin: create, search, filter,
+  edit and delete a record through the generic list/create/edit engine that
+  everything except premises, fire risk assessments, equipment and escape
+  routes is served by (driven here via "people" — see resources/configs.ts).
 - `tests/role-access.spec.js` — signed in as viewer: the frontend actually
   hides admin-only navigation and actions, and 404s an admin-only route,
   rather than relying on the API alone to refuse it.

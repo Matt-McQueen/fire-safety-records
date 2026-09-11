@@ -78,6 +78,11 @@ test("a draft assessment is published, then superseded by its review", async ({ 
   await page.getByRole("button", { name: "+ Add finding" }).click();
   await page.getByLabel("Finding").fill("Fire door to the plant room found wedged open with a fire extinguisher.");
   await page.getByRole("button", { name: "Add", exact: true }).click();
+  // Wait for the finding to actually land before publishing - Publish is a
+  // page-level button with no dependency on the add-finding form's own
+  // state, so clicking it right away can race the finding's own create
+  // request and get refused for recording none.
+  await expect(page.getByText("Fire door to the plant room")).toBeVisible();
 
   await page.getByRole("button", { name: "Publish" }).click();
   await page.getByRole("button", { name: "Confirm publish" }).click();

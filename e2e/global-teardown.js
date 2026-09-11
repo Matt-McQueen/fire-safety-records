@@ -29,6 +29,10 @@ export default async function globalTeardown() {
     ]);
     await pool.query(`DELETE FROM users WHERE email LIKE $1`, [`${marker}-%`]);
     await pool.query(`DELETE FROM premises WHERE name LIKE $1`, [`[${marker}]%`]);
+    // premises cascades to everything scoped to it, but people are not owned
+    // by one premises (see backend/README.md's Roles and premises section),
+    // so resource-engine.spec.js's test person needs its own cleanup query.
+    await pool.query(`DELETE FROM people WHERE full_name LIKE $1`, [`[${marker}]%`]);
   } finally {
     await pool.end();
   }
