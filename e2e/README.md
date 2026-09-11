@@ -78,6 +78,14 @@ hash.
   it no longer in force needs to say why (withdrawn or complied with); once
   withdrawn the duty it was the only trigger for stops applying, and it can
   then be deleted.
+- `tests/incidents-lifecycle.spec.js` — a RIDDOR-reportable incident needs
+  the particulars notified to the enforcing authority recorded before it can
+  be created, its RIDDOR badge tracks a report still due versus one that's
+  been made, un-marking it as reportable while it still carries a report
+  date or reference is refused as a contradiction, and - the one hard
+  retention rule in this domain - it can't be deleted inside RIDDOR 2013 reg
+  12's three-year mark regardless of role, admin included; contrasted with an
+  ordinary, non-reportable incident, which carries no such restriction.
 - `tests/compliance-dashboard.spec.js` — signed in as admin, on a dedicated
   premises of its own: the dashboard's computed compliance checklist
   (`GET /api/premises/:id/compliance`) matches a freshly created premises'
