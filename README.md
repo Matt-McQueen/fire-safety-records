@@ -373,6 +373,18 @@ token-refresh-and-retry behaviour, the session store, the auth service, the
 role-ranking helper that mirrors the backend's, the resource configs that
 drive the generic list/create/edit pages, and a shared UI component.
 
+```bash
+cd e2e
+npm install            # once
+npx playwright install chromium   # once
+npm test
+```
+
+Playwright, driving the real frontend and backend together in a real
+browser — the login form, a premises created/edited/deleted through the UI,
+and confirming a lower role actually can't see or reach what it shouldn't.
+See [`e2e/README.md`](e2e/README.md) for how its fixtures work.
+
 ## Status
 
 - [x] Database schema
@@ -383,10 +395,12 @@ drive the generic list/create/edit pages, and a shared UI component.
       assessment lifecycle, equipment/escape route check histories, user
       administration and the audit log, plus a generic list/create/edit
       view for every other resource
+- [x] End-to-end tests (`e2e/`) — Playwright driving the rendered frontend
+      against the real API and database, on top of the frontend's Vitest
+      suite covering its logic in isolation
 
-Not yet built out: bulk actions, an in-app view of the machine-readable
-`GET /api/` index, and end-to-end/browser UI tests — the frontend's Vitest
-suite covers its logic, not rendered pages driven through a browser.
+Not yet built out: bulk actions, and an in-app view of the machine-readable
+`GET /api/` index.
 
 ## Disclaimer
 

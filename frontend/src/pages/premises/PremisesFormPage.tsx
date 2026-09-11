@@ -43,6 +43,10 @@ export default function PremisesFormPage() {
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["resource-list", "premises"] });
       queryClient.invalidateQueries({ queryKey: ["premises", "picker"] });
+      // Without this, the detail page - keyed the same as this page's own
+      // query - serves this page's now-stale copy for up to staleTime (15s,
+      // see lib/queryClient.ts) instead of what was just saved.
+      queryClient.invalidateQueries({ queryKey: ["resource", "premises", String(result.data.id)] });
       navigate(`/premises/${result.data.id}`);
     },
     onError: (err) => setSubmitError(err),
