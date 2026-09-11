@@ -65,7 +65,11 @@ describe("logout", () => {
 });
 
 describe("changePassword", () => {
-  it("sends both passwords and clears the session on success, since every session is closed server-side", async () => {
+  it("sends both passwords, and deliberately leaves the session alone on success", async () => {
+    // Every session is closed server-side, but AccountPage lives behind the
+    // auth guard: clearing the session here, rather than leaving it to
+    // AccountPage once the user moves on from the confirmation screen, would
+    // redirect to /login before that screen ever had a chance to render.
     setSession({ accessToken: "tok-1", user });
     request.mockResolvedValue(undefined);
 
@@ -77,7 +81,7 @@ describe("changePassword", () => {
       { currentPassword: "old-pass-phrase", newPassword: "new-pass-phrase" },
       { isAuthEndpoint: true },
     );
-    expect(getSession()).toBeNull();
+    expect(getSession()).toEqual({ accessToken: "tok-1", user });
   });
 
   it("does not clear the session when the change is refused", async () => {

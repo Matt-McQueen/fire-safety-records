@@ -31,13 +31,17 @@ export async function changePassword(
   currentPassword: string,
   newPassword: string,
 ): Promise<void> {
+  // Deliberately not clearing the session here: AccountPage lives behind the
+  // auth guard, which redirects to /login the instant the session is gone -
+  // clearing it now would bounce past the confirmation screen before it
+  // could ever render. It clears the session itself once the user moves on
+  // from that screen.
   await request<void>(
     "POST",
     "/auth/change-password",
     { currentPassword, newPassword },
     { isAuthEndpoint: true },
   );
-  clearSession();
 }
 
 export async function logoutEverywhere(): Promise<void> {

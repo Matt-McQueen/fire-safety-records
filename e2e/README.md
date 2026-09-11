@@ -79,6 +79,10 @@ hash.
   a manager refused for trying to mark a check schedule statutory - a 403
   raised well past the endpoint's own role gate, which the generic error
   handler audits the same as any other ("denied").
+- `tests/account-page.spec.js` — a throwaway account of its own changes its
+  own password: a wrong current password and an unchanged new one are both
+  refused, and a real change signs out old sessions - the old password stops
+  working and the new one signs in.
 - `tests/role-access.spec.js` — signed in as viewer: the frontend actually
   hides admin-only navigation and actions, and 404s an admin-only route,
   rather than relying on the API alone to refuse it.

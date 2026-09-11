@@ -3,6 +3,7 @@ import type { FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
 import { changePassword } from "../lib/authService";
+import { clearSession } from "../lib/session";
 import { useAuth } from "../lib/AuthContext";
 import { Button } from "../components/ui/Button";
 import { Alert, ApiErrorAlert, Card, PageHeader } from "../components/ui/primitives";
@@ -33,7 +34,14 @@ export default function AccountPage() {
           Every session on this account has been signed out, this one included. Sign in again with your new
           password.
         </Alert>
-        <Button className="mt-4" variant="primary" onClick={() => navigate("/login")}>
+        <Button
+          className="mt-4"
+          variant="primary"
+          onClick={() => {
+            clearSession();
+            navigate("/login");
+          }}
+        >
           Go to sign in
         </Button>
       </div>
