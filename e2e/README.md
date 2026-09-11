@@ -69,6 +69,11 @@ hash.
   premises of its own: the dashboard's computed compliance checklist
   (`GET /api/premises/:id/compliance`) matches a freshly created premises'
   actual position, and recording something it was missing changes it.
+- `tests/compliance-checklist-detail.spec.js` — the same checklist through
+  the Compliance tab on the premises page instead of the dashboard: it isn't
+  fetched until that tab is actually opened, and covers the one status the
+  dashboard test doesn't - "attention" - by way of an equipment check whose
+  next_due_on has already passed.
 - `tests/user-admin.spec.js` — signed in as admin: creating a user grants the
   premises checked on the form, changing its role and deactivating it are
   reflected in the list, deactivation actually blocks it from signing in
