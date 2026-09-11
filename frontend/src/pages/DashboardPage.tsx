@@ -1,10 +1,10 @@
 import { Link } from "react-router-dom";
-import { useQueries } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import { useAuth } from "../lib/AuthContext";
 import { usePremises } from "../lib/PremisesContext";
-import { fetchCompliance } from "../lib/api";
+import { fetchCompliance, fetchComplianceSummary } from "../lib/api";
 import { ComplianceChecklist } from "../components/compliance/ComplianceChecklist";
-import { Badge, Card, CenteredSpinner, PageHeader, Spinner } from "../components/ui/primitives";
+import { Badge, Card, CenteredSpinner, PageHeader } from "../components/ui/primitives";
 import { Button } from "../components/ui/Button";
 
 export default function DashboardPage() {
@@ -28,7 +28,7 @@ export default function DashboardPage() {
       ) : selectedId !== null && selected ? (
         <SinglePremisesCompliance premisesId={selectedId} name={String(selected.name)} />
       ) : (
-        <PremisesGrid premisesIds={premises.map((p) => Number(p.id))} />
+        <PremisesGrid />
       )}
     </div>
   );
@@ -61,38 +61,35 @@ function SinglePremisesCompliance({ premisesId, name }: { premisesId: number; na
   );
 }
 
-function PremisesGrid({ premisesIds }: { premisesIds: number[] }) {
-  const results = useQueries({
-    queries: premisesIds.map((id) => ({
-      queryKey: ["compliance", id],
-      queryFn: () => fetchCompliance(id),
-    })),
+// One request for every premises the account can reach, rather than a
+// separate fetchCompliance call per premises: see fetchComplianceSummary and
+// the backend's complianceSummaryForAccessiblePremises for why - at this
+// database's premises count, the old per-premises fan-out (each of which is
+// itself ten queries deep) was enough to exhaust the connection pool on
+// every single dashboard visit.
+function PremisesGrid() {
+  const { data, isLoading } = useQuery({
+    queryKey: ["compliance-summary"],
+    queryFn: fetchComplianceSummary,
   });
+  const entries = data?.data ?? [];
+
+  if (isLoading) return <CenteredSpinner label="Loading compliance summary…" />;
 
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      {premisesIds.map((id, i) => {
-        const result = results[i];
-        const summary = result.data?.data.summary ?? { ok: 0, attention: 0, missing: 0, not_required: 0 };
-        const name = result.data?.data.premises.name;
-
-        return (
-          <Link key={id} to={`/premises/${id}`}>
-            <Card className="h-full p-4 transition-shadow hover:shadow-md">
-              <p className="mb-2 font-medium text-slate-800 dark:text-slate-200">{name ?? `Premises ${id}`}</p>
-              {result.isLoading ? (
-                <Spinner className="h-5 w-5" />
-              ) : (
-                <div className="flex flex-wrap gap-1.5">
-                  {summary.missing > 0 && <Badge tone="red">{summary.missing} missing</Badge>}
-                  {summary.attention > 0 && <Badge tone="amber">{summary.attention} need attention</Badge>}
-                  {summary.missing === 0 && summary.attention === 0 && <Badge tone="green">All OK</Badge>}
-                </div>
-              )}
-            </Card>
-          </Link>
-        );
-      })}
+      {entries.map(({ premises: p, summary }) => (
+        <Link key={p.id} to={`/premises/${p.id}`}>
+          <Card className="h-full p-4 transition-shadow hover:shadow-md">
+            <p className="mb-2 font-medium text-slate-800 dark:text-slate-200">{p.name}</p>
+            <div className="flex flex-wrap gap-1.5">
+              {summary.missing > 0 && <Badge tone="red">{summary.missing} missing</Badge>}
+              {summary.attention > 0 && <Badge tone="amber">{summary.attention} need attention</Badge>}
+              {summary.missing === 0 && summary.attention === 0 && <Badge tone="green">All OK</Badge>}
+            </div>
+          </Card>
+        </Link>
+      ))}
     </div>
   );
 }

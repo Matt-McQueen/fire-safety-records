@@ -93,6 +93,7 @@ export const config = {
 
   rateLimits: {
     loginPerFifteenMinutes: integer("RATE_LIMIT_LOGIN", 10),
+    refreshPerFifteenMinutes: integer("RATE_LIMIT_REFRESH", 60),
     apiPerMinute: integer("RATE_LIMIT_API", 300),
   },
 

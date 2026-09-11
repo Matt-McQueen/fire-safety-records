@@ -5,10 +5,12 @@
 // endpoints outside it are /api/health and /api/auth/login and /refresh.
 
 import { Router } from "express";
-import { authenticate } from "../auth/middleware.js";
+import { authenticate, requireRole } from "../auth/middleware.js";
 import { authRouter } from "../auth/authRoutes.js";
 import { usersRouter } from "./users.js";
 import { resourceRouter } from "../domain/resource.js";
+import { asyncHandler } from "../http/asyncHandler.js";
+import { complianceSummaryForAccessiblePremises } from "../domain/compliance.js";
 
 import {
   legalBasis,
@@ -91,6 +93,18 @@ export function buildApiRouter() {
 
   api.use("/users", usersRouter);
 
+  // Registered ahead of the premises resource router below so it isn't
+  // swallowed by that router's own GET /:id route - see
+  // complianceSummaryForAccessiblePremises for why this exists as its own
+  // endpoint rather than another per-premises call.
+  api.get(
+    "/premises/compliance-summary",
+    requireRole("viewer"),
+    asyncHandler(async (req, res) => {
+      res.json({ data: await complianceSummaryForAccessiblePremises(req.user) });
+    }),
+  );
+
   for (const resource of RESOURCES) {
     api.use(resource.path, resourceRouter(resource));
   }
@@ -115,6 +129,10 @@ export function buildApiRouter() {
         })),
         extra: [
           { path: "/api/premises/:id/compliance", description: "Computed compliance position" },
+          {
+            path: "/api/premises/compliance-summary",
+            description: "Compliance summary for every premises the caller can reach",
+          },
           {
             path: "/api/fire-risk-assessments/:id/full",
             description: "Assessment with findings, measures and persons at risk",

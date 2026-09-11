@@ -5,7 +5,8 @@ import { MemoryRouter } from "react-router-dom";
 import type { Row, SessionUser } from "../types/api";
 
 const fetchCompliance = vi.hoisted(() => vi.fn());
-vi.mock("../lib/api", () => ({ fetchCompliance }));
+const fetchComplianceSummary = vi.hoisted(() => vi.fn());
+vi.mock("../lib/api", () => ({ fetchCompliance, fetchComplianceSummary }));
 
 let mockUser: SessionUser | null = {
   id: 1,
@@ -53,6 +54,7 @@ function complianceResult(summary: { ok: number; attention: number; missing: num
 
 afterEach(() => {
   fetchCompliance.mockReset();
+  fetchComplianceSummary.mockReset();
   mockPremisesState = { premises: [], isLoading: true, selectedId: null, selected: null };
 });
 
@@ -102,13 +104,19 @@ describe("DashboardPage", () => {
       selectedId: null,
       selected: null,
     };
-    fetchCompliance
-      .mockResolvedValueOnce(complianceResult({ ok: 5, attention: 0, missing: 0 }, "Site One"))
-      .mockResolvedValueOnce(complianceResult({ ok: 3, attention: 2, missing: 0 }, "Site Two"));
+    // A single batched call, not one fetchCompliance per premises - see
+    // DashboardPage.tsx's PremisesGrid for why.
+    fetchComplianceSummary.mockResolvedValue({
+      data: [
+        complianceResult({ ok: 5, attention: 0, missing: 0 }, "Site One").data,
+        complianceResult({ ok: 3, attention: 2, missing: 0 }, "Site Two").data,
+      ],
+    });
     renderPage();
 
     await waitFor(() => expect(screen.getByText("All OK")).toBeInTheDocument());
     expect(screen.getByText("2 need attention")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Site One/ })).toHaveAttribute("href", "/premises/1");
+    expect(fetchCompliance).not.toHaveBeenCalled();
   });
 });

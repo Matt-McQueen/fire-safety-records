@@ -168,71 +168,72 @@ admin-scoped test file is added, every one of them logs in fresh via
 `signIn()` instead — one extra request, and no ceiling on how many test files
 can use that role.
 
-## A known limitation: the full suite can still hang under this database's real capacity
+## History: a "database capacity" problem that turned out not to be one
 
-This project's Supabase pooler runs in session mode with a hard 15-client
-cap for the whole project - and querying `pg_stat_activity` directly shows
-roughly ten of those permanently held by the project's own platform
-connections (PostgREST, pg_cron, pg_net, Supavisor - the pooler itself - and
-its metrics exporter), not anything this suite or the app opened. The actual
-headroom for the backend process is a handful of connections, not fifteen,
-so `playwright.config.js` caps `workers` at 4, sets the backend's own
-`PG_POOL_MAX` to 5 for this suite specifically (render.yaml already uses the
-same value in production, for the same reason), and raises both the
-per-test `timeout` (60s) and the default assertion `expect.timeout` (10s)
-well past Playwright's defaults, since a query here can be queued behind
-others' for genuinely longer than either default allows on an otherwise
-ordinary run.
+For a long time, a full run of this suite would reliably fail a large chunk
+of its files at once - roughly a third of them, always the same ones, always
+at the same generic step (the first UI action after signing in) - while the
+same files passed every time run alone or in a small group. That signature
+was originally diagnosed as this project's Supabase database running out of
+real connection headroom under the suite's combined load: Supabase's pooler
+ran in session mode with a hard 15-client cap for the whole project, and
+`pg_stat_activity` really did show roughly ten of those permanently held by
+the project's own platform connections (PostgREST, pg_cron, pg_net, Supavisor
+itself, its metrics exporter), leaving only a handful for everything else.
+`playwright.config.js` was tuned around that theory for some time: `workers`
+capped at 4, the backend's own `PG_POOL_MAX` lowered to 5 to match, and both
+`timeout` and `expect.timeout` raised well past Playwright's defaults.
 
-Even with all of that, running the **full** suite together can still
-occasionally hang for 60+ seconds on an unrelated page load or query - seen
-on both `/admin/audit-log` and a plain premises picker - confirmed to be
-contention from the full suite's combined load and not a bug in whichever
-test happened to be running: the same test, run alone or in a small group,
-passes reliably every time (checked by re-running `role-capabilities.spec.js`
-alone three times in a row after it had just hung as part of a full run). If
-a full run hangs or times out, it's very likely this rather than a real
-regression - rerunning it, or running the affected file alone, is the way to
-tell the difference. This is a real constraint of this specific shared
-database's capacity relative to how much this suite has grown, not something
-client-side configuration alone fully solves - narrowing it further would
-need visibility this suite doesn't have into what else is using the
-project's connections at the same time.
+None of that was wrong exactly - that connection cap is real, and worth
+knowing about if this ever moves database providers again - but it was not
+the cause of this particular failure. The project was migrated to Neon
+specifically to test that diagnosis (Neon's pooler runs in transaction mode
+with no such session cap) and the *identical* set of files still failed,
+reproduced three times in a row including with Neon's compute already warm.
+Serving the frontend as a production build instead of Vite's dev server, and
+fixing a real (separate) N+1 query problem in the compliance dashboard, each
+independently changed nothing either. What finally explained it: the access
+token lives only in memory, never `localStorage`, so every full page
+navigation (`page.goto`, not a client-side route change) has nothing to check
+a session with except calling `POST /api/auth/refresh` - `AuthContext.tsx`
+does this once on every mount. `tryRefresh()` treats any non-2xx response,
+429 included, as "not signed in" and drops back to the login page
+(`frontend/src/lib/http.ts`). That endpoint was rate limited to 60 requests
+per 15 minutes per address, hardcoded rather than configurable
+(`backend/src/auth/authRoutes.js`) - and this suite's `page.goto` calls alone
+add up to well over 60 across a full run, all from the one address every
+`npm test` run uses. Once the count crossed 60 partway through a run, every
+navigation after that point got a 429 and landed back on the login screen
+instead of wherever the test expected to be - consistently the same files,
+because a full run's total navigation count and rough ordering barely change
+run to run.
 
-Worth tracking as this suite keeps growing: at 28 spec files, a full run hit
-this on a quarter of them at once, including - for the first time - a
-brand-new spec file on the very first run it was ever part of, at the exact
-same generic step (the first UI action after signing in) other affected
-files hit it at. That's expected given the mechanism (any test's first
-network round trip can lose the race for a connection, regardless of what
-the test does), not evidence the new file itself is special - but it does
-mean the rate is climbing with the suite's size, not staying flat. Retrying
-automatically (Playwright's `retries` option) was deliberately not reached
-for here: most spec files compute their tagged names and emails once via
-`test.beforeAll`, the same value on every attempt, so retrying a test that
-had already gotten partway through creating something (an account, in
-particular - `users_email_lower_key` is a real uniqueness constraint) would
-hit a conflict from its own first attempt rather than a clean rerun. Making
-that safe would mean revisiting how every spec file tags what it creates,
-which is a larger, deliberate change and not one to make as a side effect of
-adding another test.
+The fix was to make that limit configurable the same way `RATE_LIMIT_LOGIN`
+already was (`RATE_LIMIT_REFRESH`, `backend/src/config/env.js`, default
+unchanged at 60) and raise it for this suite in `playwright.config.js`,
+exactly as `RATE_LIMIT_LOGIN` already was. With that alone, a full run at
+Playwright's actual default worker count (one per CPU core, no `workers`
+override) and default timeouts passed all 30 tests in under 40 seconds,
+repeated twice. `workers`, `timeout` and `expect.timeout` were all removed
+from this config as a result - none of them were doing anything for this
+problem, and nothing here needs them anymore. `PG_POOL_MAX: 5` stays in the
+backend's env below, because that connection cap is still real even though
+it was never what broke this suite.
 
-Update at 30 spec files: a full run failed 10 of them at once (a third of
-the suite) plus 3 "did not run", and took two and a half minutes instead of
-the usual well under one. Still not a regression - the same affected files
-passed immediately when rerun alone or in a small group - but the trend from
-the last update has continued in the same direction: this shared database's
-real capacity is a harder ceiling on how large this suite can get away with
-running all at once than any client-side tuning here has been able to move.
-Past a certain size, treating a full run's result at face value stops being
-reasonable without also checking whether the failures clear on their own.
+The lesson worth keeping: a failure signature that looks exactly like
+resource contention - same files, same step, passes alone, gets worse as the
+suite grows - is not proof of *which* resource. Two different database
+providers and two different frontend serving strategies were tried and ruled
+out before the actual constant, non-database, non-frontend ceiling (a fixed
+requests-per-window count, shared by every navigation regardless of what
+else changes) was found by reading what the failing page actually showed
+(the login form, not a slow list) rather than continuing to tune
+concurrency.
 
-One symptom worth naming so it doesn't look like a separate problem: if this
+One symptom that's just this same mechanism wearing a different name: if it
 hits the *first* test in `role-access.spec.js` (its tests share one browser
 context in `test.describe.configure({ mode: "serial" })`), Playwright skips
-the rest of that file as "did not run" rather than attempting them - that's
-the same contention, not additional breakage, and the same rerun-alone check
-applies.
+the rest of that file as "did not run" rather than attempting them.
 
 ## A couple hundred stale accounts already in this database
 
@@ -248,14 +249,14 @@ create.
 
 ## A rate limit you may notice
 
-`POST /api/auth/refresh` is limited to 60 requests per 15 minutes per address
-(`backend/src/auth/authRoutes.js`), and unlike the login limit that ceiling
-isn't configurable by environment variable - deliberately, since it's one of
-the two endpoints reachable without a token. A single `npm test` run uses
-roughly a dozen of those. Re-running the suite many times in quick succession
-during development can still add up to more than 60 within the window, which
-shows up as tests landing back on the login page instead of where they
-expected to be. If that happens, it clears itself after 15 minutes - or
-immediately by restarting the backend dev server Playwright started (its
-rate-limit counters are only kept in memory), which `reuseExistingServer`
-otherwise happily leaves running between runs.
+`POST /api/auth/refresh` is limited to `RATE_LIMIT_REFRESH` requests per 15
+minutes per address (`backend/src/auth/authRoutes.js`), 60 by default in
+production and raised well past that for this suite (see the history section
+above for why - every full page navigation calls it once, and this suite
+does a lot of those). Running against a backend that isn't using this
+config's env - one started by hand without it, or left over from before this
+was fixed - can still hit the production default and show tests landing back
+on the login page instead of where they expected to be. If that happens, it
+clears itself after 15 minutes, or immediately by restarting the backend
+dev server with this config's env in effect (rate-limit counters are only
+kept in memory).

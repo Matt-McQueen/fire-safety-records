@@ -81,6 +81,19 @@ export function fetchCompliance(premisesId: number): Promise<ItemResponse<Compli
   return request("GET", `/premises/${premisesId}/compliance`);
 }
 
+export interface ComplianceSummaryEntry {
+  premises: { id: number; name: string; employee_count: number | null };
+  recording_duty_applies: boolean;
+  summary: { ok: number; attention: number; missing: number; not_required: number };
+}
+
+// One request for every premises the caller can reach, rather than the
+// dashboard grid firing fetchCompliance once per premises itself - see
+// complianceSummaryForAccessiblePremises in the backend for why.
+export function fetchComplianceSummary(): Promise<ItemResponse<ComplianceSummaryEntry[]>> {
+  return request("GET", "/premises/compliance-summary");
+}
+
 // --- fire risk assessment extras -----------------------------------------
 
 export function publishAssessment(

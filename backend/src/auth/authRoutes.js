@@ -39,7 +39,11 @@ const loginLimiter = limiter({
   message: "Too many sign-in attempts. Try again in a few minutes.",
 });
 
-const refreshLimiter = limiter({ limit: () => 60, windowMinutes: 15, message: "Too many refresh attempts." });
+const refreshLimiter = limiter({
+  limit: () => config.rateLimits.refreshPerFifteenMinutes,
+  windowMinutes: 15,
+  message: "Too many refresh attempts.",
+});
 
 const credentials = z.strictObject({
   email: z.string().trim().min(1).max(320),

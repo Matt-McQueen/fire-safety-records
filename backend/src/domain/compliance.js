@@ -260,6 +260,54 @@ export async function complianceForPremises(premisesId, user) {
   };
 }
 
+// Runs `fn` over `items` with at most `limit` in flight at once, rather than
+// firing every one of them at the same time.
+async function mapWithConcurrency(items, limit, fn) {
+  const results = new Array(items.length);
+  let next = 0;
+  async function worker() {
+    while (next < items.length) {
+      const i = next++;
+      results[i] = await fn(items[i], i);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results;
+}
+
+// The same compliance position as complianceForPremises, for every premises
+// the caller can reach, in one request.
+//
+// The dashboard used to get this by calling GET .../:id/compliance once per
+// premises itself (frontend/src/pages/DashboardPage.tsx). That was fine while
+// this database held a handful of premises, but complianceForPremises already
+// runs ten queries per premises, so as the premises table has grown that
+// page's load fanned out to ten times as many concurrent queries as there are
+// premises - for an admin account, several hundred at once, on every single
+// visit to "/". That's what was actually behind the connection-pool
+// exhaustion this project spent a long time chasing across two database
+// providers: not a shortage of pooled connections, but one page asking for
+// far more of them at once than any reasonable pool size provides. Capping
+// concurrency here keeps that fan-out bounded regardless of how many premises
+// an account can see.
+export async function complianceSummaryForAccessiblePremises(user) {
+  const { rows: targets } =
+    user.premisesIds === null
+      ? await pool.query(`SELECT id, name FROM premises ORDER BY name`)
+      : await pool.query(`SELECT id, name FROM premises WHERE id = ANY($1) ORDER BY name`, [
+          user.premisesIds,
+        ]);
+
+  return mapWithConcurrency(targets, 4, async (target) => {
+    const full = await complianceForPremises(target.id, user);
+    return {
+      premises: full.premises,
+      recording_duty_applies: full.recording_duty_applies,
+      summary: full.summary,
+    };
+  });
+}
+
 function triggerText(premises) {
   const reasons = [];
   if (premises.trigger_five_or_more_employees) reasons.push("five or more employees");
