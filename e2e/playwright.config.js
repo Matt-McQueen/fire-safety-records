@@ -13,6 +13,17 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0,
   reporter: "html",
   globalTeardown: "./global-teardown.js",
+  // Capped rather than left at Playwright's default (one per CPU core):
+  // every worker's browser, and the backend's own PG_POOL_MAX=10, share one
+  // Supabase project pooler that hard-caps at 15 clients total for the whole
+  // project (session mode - see PG_POOL_MAX's comment below). Above about 4
+  // workers, that contention got bad enough that a query could still be
+  // queued for a connection when a later, dependent one ran - reproduced
+  // reliably fra-lifecycle.spec.js's publish step reading zero for a finding
+  // its own prior request had already written - and fixed by capping this
+  // rather than by raising PG_POOL_MAX, which just hit the pooler's own cap
+  // instead.
+  workers: 4,
 
   use: {
     baseURL: "http://localhost:5173",
@@ -37,7 +48,12 @@ export default defineConfig({
       // raises it, so re-running the suite a few times in a row doesn't lock
       // the machine's address out of /api/auth/login (default is 10/15min).
       // A low scrypt cost keeps the account creation in global-setup.js fast;
-      // it only ever protects test accounts.
+      // it only ever protects test accounts. PG_POOL_MAX is left at the
+      // backend's own default (10) deliberately - raising it made things
+      // worse, not better: this project's Supabase pooler is in session mode
+      // with a hard 15-client cap for the whole project (see this config's
+      // `workers` setting above for what actually fixed the contention this
+      // was an attempt to work around).
       env: { NODE_ENV: "test", SCRYPT_COST: "1024", RATE_LIMIT_LOGIN: "10000" },
     },
     {

@@ -69,6 +69,11 @@ hash.
   premises of its own: the dashboard's computed compliance checklist
   (`GET /api/premises/:id/compliance`) matches a freshly created premises'
   actual position, and recording something it was missing changes it.
+- `tests/user-admin.spec.js` — signed in as admin: creating a user grants the
+  premises checked on the form, changing its role and deactivating it are
+  reflected in the list, deactivation actually blocks it from signing in
+  again, an admin can't demote/deactivate their own account, and the audit
+  trail records all three account changes.
 - `tests/role-access.spec.js` — signed in as viewer: the frontend actually
   hides admin-only navigation and actions, and 404s an admin-only route,
   rather than relying on the API alone to refuse it.
@@ -90,6 +95,32 @@ was revoked mid-test. Rather than re-litigate that every time a new
 admin-scoped test file is added, every one of them logs in fresh via
 `signIn()` instead — one extra request, and no ceiling on how many test files
 can use that role.
+
+## Why `workers` is capped
+
+This project's Supabase pooler runs in session mode with a hard 15-client
+cap for the whole project, shared by everything talking to it at once: every
+Playwright worker's browser, the backend's own connection pool
+(`PG_POOL_MAX=10`), and anything else hitting this database at the same time.
+Past about 4 workers that contention got bad enough to occasionally produce
+a stale read - `fra-lifecycle.spec.js`'s publish step, in particular, would
+sometimes see zero significant findings for an assessment moments after its
+own earlier request had added one. `playwright.config.js` caps `workers` at
+4 for that reason; raising `PG_POOL_MAX` instead only made it worse by
+hitting the pooler's own ceiling directly (`EMAXCONNSESSION: max clients
+reached in session mode`).
+
+## A couple hundred stale accounts already in this database
+
+While tracking the above down, `user-admin.spec.js` turned up close to 200
+accounts named `apitest-<hex>-...@example.test` already sitting in this
+database - the naming convention `backend/tests/helpers.mjs` uses, from a
+backend integration test run that was evidently interrupted before its own
+cleanup ran. They're harmless to this suite (every lookup here goes through
+the search box rather than assuming a user is on the unfiltered list's first
+page), but worth knowing about and cleaning up directly in the database if
+they're not wanted - this suite has no reason to touch accounts it didn't
+create.
 
 ## A rate limit you may notice
 
