@@ -49,7 +49,7 @@ export default function EquipmentListPage() {
       />
 
       <div className="mb-4 w-56">
-        <label className="mb-1 block text-xs font-medium text-slate-500">Type</label>
+        <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">Type</label>
         <Select value={equipmentType ?? ""} onChange={(e) => updateParam("equipment_type", e.target.value || undefined)}>
           <option value="">Any</option>
           {EQUIPMENT_TYPES.map((t) => (
@@ -63,7 +63,7 @@ export default function EquipmentListPage() {
       {error ? (
         <ApiErrorAlert error={error} />
       ) : (
-        <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
+        <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm">
           <ResourceTable
             columns={EQUIPMENT_COLUMNS}
             rows={data?.data ?? []}

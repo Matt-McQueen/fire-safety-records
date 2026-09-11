@@ -13,7 +13,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         if (items.length === 0) return null;
         return (
           <div key={section.title}>
-            <p className="px-3 text-xs font-semibold tracking-wide text-slate-400 uppercase">{section.title}</p>
+            <p className="px-3 text-xs font-semibold tracking-wide text-slate-400 dark:text-slate-500 uppercase">{section.title}</p>
             <ul className="mt-1.5 space-y-0.5">
               {items.map((item) => (
                 <li key={item.to}>
@@ -22,7 +22,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
                     onClick={onNavigate}
                     className={({ isActive }) =>
                       `block rounded-md px-3 py-1.5 text-sm font-medium ${
-                        isActive ? "bg-red-50 text-red-800" : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                        isActive ? "bg-red-50 dark:bg-red-950/40 text-red-800 dark:text-red-300" : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100"
                       }`
                     }
                   >

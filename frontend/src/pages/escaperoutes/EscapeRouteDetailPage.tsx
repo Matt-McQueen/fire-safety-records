@@ -98,15 +98,15 @@ export default function EscapeRouteDetailPage() {
       )}
 
       <div className="mt-6">
-        <h2 className="mb-2 text-sm font-semibold tracking-wide text-slate-500 uppercase">Check history</h2>
+        <h2 className="mb-2 text-sm font-semibold tracking-wide text-slate-500 dark:text-slate-400 uppercase">Check history</h2>
         <div className="space-y-2">
           {(checksQuery.data?.data ?? []).map((check) => (
             <Card key={String(check.id)} className="p-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-sm font-medium text-slate-800">{String(check.performed_on)}</p>
-                  {Boolean(check.obstructions_found) && <p className="mt-1 text-sm text-slate-600">{String(check.obstructions_found)}</p>}
-                  {Boolean(check.next_due_on) && <p className="mt-1 text-xs text-slate-500">Next due: {String(check.next_due_on)}</p>}
+                  <p className="text-sm font-medium text-slate-800 dark:text-slate-200">{String(check.performed_on)}</p>
+                  {Boolean(check.obstructions_found) && <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">{String(check.obstructions_found)}</p>}
+                  {Boolean(check.next_due_on) && <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Next due: {String(check.next_due_on)}</p>}
                 </div>
                 <Badge tone={check.outcome === "pass" ? "green" : check.obstruction_outstanding ? "red" : "amber"}>
                   {OUTCOME_LABELS[String(check.outcome)] ?? String(check.outcome)}
@@ -114,7 +114,7 @@ export default function EscapeRouteDetailPage() {
               </div>
             </Card>
           ))}
-          {checksQuery.data?.data.length === 0 && <p className="text-sm text-slate-500">No checks recorded yet.</p>}
+          {checksQuery.data?.data.length === 0 && <p className="text-sm text-slate-500 dark:text-slate-400">No checks recorded yet.</p>}
         </div>
 
         {canWrite && Boolean(route.in_service) && (
@@ -146,8 +146,8 @@ export default function EscapeRouteDetailPage() {
 function Field({ label, value }: { label: string; value: unknown }) {
   return (
     <div>
-      <dt className="text-xs font-medium text-slate-500">{label}</dt>
-      <dd className="text-sm text-slate-800">{value ? String(value) : "—"}</dd>
+      <dt className="text-xs font-medium text-slate-500 dark:text-slate-400">{label}</dt>
+      <dd className="text-sm text-slate-800 dark:text-slate-200">{value ? String(value) : "—"}</dd>
     </div>
   );
 }
@@ -193,7 +193,7 @@ function EditCard({
         onChange={(key, value) => setValues((prev) => ({ ...prev, [key]: value }))}
         fieldErrors={fieldErrors}
       />
-      <div className="mt-4 flex justify-end gap-2 border-t border-slate-100 pt-4">
+      <div className="mt-4 flex justify-end gap-2 border-t border-slate-100 dark:border-slate-800 pt-4">
         <Button variant="secondary" onClick={onCancel}>
           Cancel
         </Button>

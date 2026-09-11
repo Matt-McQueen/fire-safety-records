@@ -3,7 +3,17 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>Fire Safety Records</title>
+    <script>
+      // Applied before React mounts, so the page never flashes the wrong
+      // theme on load. Kept in sync with src/lib/ThemeContext.tsx.
+      (function () {
+        var stored = localStorage.getItem("fsr:theme");
+        var dark = stored === "dark" || (stored !== "light" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+        if (dark) document.documentElement.classList.add("dark");
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

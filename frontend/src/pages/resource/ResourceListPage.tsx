@@ -77,7 +77,7 @@ export default function ResourceListPage() {
       <div className="mb-4 flex flex-wrap items-end gap-3">
         {config.searchable && (
           <div className="w-56">
-            <label className="mb-1 block text-xs font-medium text-slate-500">Search</label>
+            <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">Search</label>
             <TextInput
               placeholder="Search…"
               defaultValue={q}
@@ -91,7 +91,7 @@ export default function ResourceListPage() {
 
         {(config.filters ?? []).map((filter) => (
           <div key={filter.param} className="w-48">
-            <label className="mb-1 block text-xs font-medium text-slate-500">{filter.label}</label>
+            <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">{filter.label}</label>
             {filter.field.kind === "boolean" ? (
               <Select
                 value={filterValues[filter.param] ?? ""}
@@ -130,7 +130,7 @@ export default function ResourceListPage() {
         ))}
 
         <div className="w-48">
-          <label className="mb-1 block text-xs font-medium text-slate-500">Sort by</label>
+          <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">Sort by</label>
           <Select value={sort} onChange={(e) => updateParam("sort", e.target.value)}>
             {config.sortable.map((s) => (
               <option key={s.key} value={s.key}>
@@ -140,7 +140,7 @@ export default function ResourceListPage() {
           </Select>
         </div>
         <div className="w-32">
-          <label className="mb-1 block text-xs font-medium text-slate-500">Order</label>
+          <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">Order</label>
           <Select value={order} onChange={(e) => updateParam("order", e.target.value)}>
             <option value="asc">Ascending</option>
             <option value="desc">Descending</option>
@@ -151,7 +151,7 @@ export default function ResourceListPage() {
       {error ? (
         <ApiErrorAlert error={error} />
       ) : (
-        <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
+        <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm">
           <ResourceTable
             columns={config.columns}
             rows={data?.data ?? []}

@@ -51,7 +51,7 @@ export default function FraFormPage() {
           fieldErrors={fieldErrors}
         />
 
-        <div className="mt-6 flex justify-end gap-2 border-t border-slate-100 pt-4">
+        <div className="mt-6 flex justify-end gap-2 border-t border-slate-100 dark:border-slate-800 pt-4">
           <Button variant="secondary" onClick={() => navigate("/fire-risk-assessments")}>
             Cancel
           </Button>

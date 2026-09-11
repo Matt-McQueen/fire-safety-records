@@ -56,7 +56,7 @@ export default function FraListPage() {
 
       <div className="mb-4 flex gap-3">
         <div className="w-48">
-          <label className="mb-1 block text-xs font-medium text-slate-500">Status</label>
+          <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">Status</label>
           <Select value={status ?? ""} onChange={(e) => updateParam("status", e.target.value || undefined)}>
             <option value="">Any</option>
             <option value="draft">Draft</option>
@@ -69,7 +69,7 @@ export default function FraListPage() {
       {error ? (
         <ApiErrorAlert error={error} />
       ) : (
-        <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
+        <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm">
           <ResourceTable
             columns={FRA_COLUMNS}
             rows={data?.data ?? []}

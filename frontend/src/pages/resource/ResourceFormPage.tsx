@@ -95,7 +95,7 @@ export default function ResourceFormPage() {
           />
         </fieldset>
 
-        <div className="mt-6 flex items-center justify-between border-t border-slate-100 pt-4">
+        <div className="mt-6 flex items-center justify-between border-t border-slate-100 dark:border-slate-800 pt-4">
           <div>
             {!isNew && canRemove && (
               <Button

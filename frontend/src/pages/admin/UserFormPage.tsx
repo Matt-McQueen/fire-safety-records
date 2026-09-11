@@ -158,8 +158,8 @@ export default function UserFormPage() {
 
         {role !== "admin" && (
           <div className="mt-4">
-            <p className="mb-2 text-sm font-medium text-slate-700">Premises access</p>
-            <div className="grid max-h-64 grid-cols-1 gap-1 overflow-y-auto rounded-md border border-slate-200 p-3 sm:grid-cols-2">
+            <p className="mb-2 text-sm font-medium text-slate-700 dark:text-slate-300">Premises access</p>
+            <div className="grid max-h-64 grid-cols-1 gap-1 overflow-y-auto rounded-md border border-slate-200 dark:border-slate-700 p-3 sm:grid-cols-2">
               {(premisesData?.data ?? []).map((p) => (
                 <Checkbox
                   key={String(p.id)}
@@ -174,7 +174,7 @@ export default function UserFormPage() {
             </div>
           </div>
         )}
-        {role === "admin" && <p className="mt-4 text-sm text-slate-500">An admin account reaches every premises.</p>}
+        {role === "admin" && <p className="mt-4 text-sm text-slate-500 dark:text-slate-400">An admin account reaches every premises.</p>}
 
         {!isNew && locked && (
           <div className="mt-4">
@@ -184,7 +184,7 @@ export default function UserFormPage() {
           </div>
         )}
 
-        <div className="mt-6 flex items-center justify-between border-t border-slate-100 pt-4">
+        <div className="mt-6 flex items-center justify-between border-t border-slate-100 dark:border-slate-800 pt-4">
           <div>
             {!isNew && !isSelf && (
               <Button

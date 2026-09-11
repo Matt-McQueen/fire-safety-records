@@ -82,7 +82,7 @@ export default function FraDetailPage() {
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <StatusBadge fra={fra} />
         <Badge tone="neutral">{ASSESSMENT_TYPE_LABELS[String(fra.assessment_type)] ?? String(fra.assessment_type)}</Badge>
-        <a className="text-sm text-slate-500 hover:underline" href={`/premises/${fra.premises_id}`} onClick={(e) => { e.preventDefault(); navigate(`/premises/${fra.premises_id}`); }}>
+        <a className="text-sm text-slate-500 dark:text-slate-400 hover:underline" href={`/premises/${fra.premises_id}`} onClick={(e) => { e.preventDefault(); navigate(`/premises/${fra.premises_id}`); }}>
           {String(fra.premises_name)}
         </a>
       </div>
@@ -157,7 +157,7 @@ function StatusBadge({ fra }: { fra: Row }) {
 function Section({ title, children, className = "" }: { title: string; children: ReactNode; className?: string }) {
   return (
     <div className={className}>
-      <h2 className="mb-2 text-sm font-semibold tracking-wide text-slate-500 uppercase">{title}</h2>
+      <h2 className="mb-2 text-sm font-semibold tracking-wide text-slate-500 dark:text-slate-400 uppercase">{title}</h2>
       {children}
     </div>
   );
@@ -186,15 +186,15 @@ function OverviewCard({ fra }: { fra: Row }) {
       <dl className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
         {rows.map(([label, value]) => (
           <div key={label}>
-            <dt className="text-xs font-medium text-slate-500">{label}</dt>
-            <dd className="text-sm text-slate-800">{String(value)}</dd>
+            <dt className="text-xs font-medium text-slate-500 dark:text-slate-400">{label}</dt>
+            <dd className="text-sm text-slate-800 dark:text-slate-200">{String(value)}</dd>
           </div>
         ))}
       </dl>
       {Boolean(fra.summary) && (
-        <div className="mt-4 border-t border-slate-100 pt-4">
-          <dt className="text-xs font-medium text-slate-500">Summary</dt>
-          <dd className="mt-1 text-sm whitespace-pre-wrap text-slate-800">{String(fra.summary)}</dd>
+        <div className="mt-4 border-t border-slate-100 dark:border-slate-800 pt-4">
+          <dt className="text-xs font-medium text-slate-500 dark:text-slate-400">Summary</dt>
+          <dd className="mt-1 text-sm whitespace-pre-wrap text-slate-800 dark:text-slate-200">{String(fra.summary)}</dd>
         </div>
       )}
     </Card>
@@ -243,7 +243,7 @@ function EditAssessmentCard({
         onChange={(key, value) => setValues((prev) => ({ ...prev, [key]: value }))}
         fieldErrors={fieldErrors}
       />
-      <div className="mt-4 flex justify-end gap-2 border-t border-slate-100 pt-4">
+      <div className="mt-4 flex justify-end gap-2 border-t border-slate-100 dark:border-slate-800 pt-4">
         <Button variant="secondary" onClick={onCancel}>
           Cancel
         </Button>
@@ -305,7 +305,7 @@ function PublishDialog({
 
   return (
     <Card className="mb-4 p-4">
-      <p className="mb-3 text-sm text-slate-600">
+      <p className="mb-3 text-sm text-slate-600 dark:text-slate-400">
         Publishing makes this the recorded assessment for its premises and supersedes any assessment currently
         recorded there.
       </p>
@@ -316,19 +316,19 @@ function PublishDialog({
       )}
       <div className="flex flex-wrap items-end gap-3">
         <div>
-          <label className="mb-1 block text-xs font-medium text-slate-500">Recorded on (defaults to today)</label>
+          <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">Recorded on (defaults to today)</label>
           <input
             type="date"
-            className="rounded-md border border-slate-300 px-3 py-1.5 text-sm"
+            className="rounded-md border border-slate-300 dark:border-slate-600 px-3 py-1.5 text-sm"
             value={recordedOn}
             onChange={(e) => setRecordedOn(e.target.value)}
           />
         </div>
         {currentType !== "initial" && (
           <div>
-            <label className="mb-1 block text-xs font-medium text-slate-500">Assessment type</label>
+            <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">Assessment type</label>
             <select
-              className="rounded-md border border-slate-300 px-3 py-1.5 text-sm"
+              className="rounded-md border border-slate-300 dark:border-slate-600 px-3 py-1.5 text-sm"
               value={assessmentType}
               onChange={(e) => setAssessmentType(e.target.value)}
             >
@@ -377,7 +377,7 @@ function FindingsList({
         />
       ))}
 
-      {findings.length === 0 && <p className="text-sm text-slate-500">No significant findings recorded yet.</p>}
+      {findings.length === 0 && <p className="text-sm text-slate-500 dark:text-slate-400">No significant findings recorded yet.</p>}
 
       {canEditFindings && (
         <div>
@@ -447,10 +447,10 @@ function FindingCard({
       ) : (
         <>
           <div className="flex items-start justify-between gap-3">
-            <p className="text-sm text-slate-800">{String(finding.finding)}</p>
+            <p className="text-sm text-slate-800 dark:text-slate-200">{String(finding.finding)}</p>
             {finding.risk_rating ? <Badge tone={riskTone(String(finding.risk_rating))}>{String(finding.risk_rating)}</Badge> : null}
           </div>
-          <div className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-slate-500">
+          <div className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-slate-500 dark:text-slate-400">
             {finding.location ? <span>Location: {String(finding.location)}</span> : null}
             {finding.ignition_source ? <span>Ignition: {String(finding.ignition_source)}</span> : null}
             {finding.fuel_source ? <span>Fuel: {String(finding.fuel_source)}</span> : null}
@@ -475,11 +475,11 @@ function FindingCard({
         </>
       )}
 
-      <div className="mt-3 space-y-2 border-t border-slate-100 pt-3 pl-3">
+      <div className="mt-3 space-y-2 border-t border-slate-100 dark:border-slate-800 pt-3 pl-3">
         {finding.measures.map((measure) => (
           <MeasureRow key={String(measure.id)} measure={measure} canEdit={canEditMeasures} onChange={onChange} />
         ))}
-        {finding.measures.length === 0 && <p className="text-xs text-slate-400">No measures recorded.</p>}
+        {finding.measures.length === 0 && <p className="text-xs text-slate-400 dark:text-slate-500">No measures recorded.</p>}
         {canEditMeasures &&
           (addingMeasure ? (
             <ChildRecordForm
@@ -540,12 +540,12 @@ function MeasureRow({ measure, canEdit, onChange }: { measure: Row; canEdit: boo
     <div className="text-sm">
       {Boolean(error) && <ApiErrorAlert error={error} />}
       <div className="flex items-start justify-between gap-3">
-        <p className="text-slate-700">{String(measure.description)}</p>
+        <p className="text-slate-700 dark:text-slate-300">{String(measure.description)}</p>
         <Badge tone={measure.status === "taken" ? "green" : measure.overdue ? "red" : "amber"}>
           {measure.status === "taken" ? "Taken" : measure.overdue ? "Planned — overdue" : "Planned"}
         </Badge>
       </div>
-      <div className="mt-0.5 flex flex-wrap gap-x-3 text-xs text-slate-500">
+      <div className="mt-0.5 flex flex-wrap gap-x-3 text-xs text-slate-500 dark:text-slate-400">
         {measure.target_date ? <span>Target: {String(measure.target_date)}</span> : null}
         {measure.completed_on ? <span>Completed: {String(measure.completed_on)}</span> : null}
       </div>
@@ -590,7 +590,7 @@ function PersonsAtRiskList({
       {persons.map((person) => (
         <PersonAtRiskRow key={String(person.id)} person={person} canEdit={canEdit} onChange={onChange} />
       ))}
-      {persons.length === 0 && <p className="text-sm text-slate-500">No persons at particular risk recorded.</p>}
+      {persons.length === 0 && <p className="text-sm text-slate-500 dark:text-slate-400">No persons at particular risk recorded.</p>}
       {canEdit && (
         <div>
           {adding ? (
@@ -649,11 +649,11 @@ function PersonAtRiskRow({ person, canEdit, onChange }: { person: Row; canEdit: 
       {Boolean(error) && <ApiErrorAlert error={error} />}
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-sm font-medium text-slate-800">
+          <p className="text-sm font-medium text-slate-800 dark:text-slate-200">
             {person.person_name ? String(person.person_name) : String(person.group_description ?? "Unnamed")}
           </p>
-          {person.category ? <p className="text-xs text-slate-500">{String(person.category)}</p> : null}
-          {person.why_at_risk ? <p className="mt-1 text-sm text-slate-700">{String(person.why_at_risk)}</p> : null}
+          {person.category ? <p className="text-xs text-slate-500 dark:text-slate-400">{String(person.category)}</p> : null}
+          {person.why_at_risk ? <p className="mt-1 text-sm text-slate-700 dark:text-slate-300">{String(person.why_at_risk)}</p> : null}
         </div>
         {person.peep_in_place ? <Badge tone="blue">PEEP in place</Badge> : null}
       </div>

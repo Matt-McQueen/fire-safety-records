@@ -36,10 +36,10 @@ export default function AuditLogPage() {
       ) : isLoading ? (
         <CenteredSpinner />
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm">
+        <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm">
           <table className="w-full min-w-max text-left text-sm">
             <thead>
-              <tr className="border-b border-slate-200 text-xs font-medium tracking-wide text-slate-500 uppercase">
+              <tr className="border-b border-slate-200 dark:border-slate-700 text-xs font-medium tracking-wide text-slate-500 dark:text-slate-400 uppercase">
                 <th className="px-4 py-2.5">When</th>
                 <th className="px-4 py-2.5">User</th>
                 <th className="px-4 py-2.5">Action</th>
@@ -47,15 +47,15 @@ export default function AuditLogPage() {
                 <th className="px-4 py-2.5">Outcome</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {(data?.data ?? []).map((entry) => (
                 <tr key={String(entry.id)}>
-                  <td className="px-4 py-2 whitespace-nowrap text-slate-500">
+                  <td className="px-4 py-2 whitespace-nowrap text-slate-500 dark:text-slate-400">
                     {new Date(entry.occurred_at).toLocaleString("en-GB")}
                   </td>
-                  <td className="px-4 py-2 whitespace-nowrap text-slate-700">{entry.user_email ?? "—"}</td>
-                  <td className="px-4 py-2 whitespace-nowrap font-mono text-xs text-slate-700">{entry.action}</td>
-                  <td className="px-4 py-2 whitespace-nowrap text-slate-700">
+                  <td className="px-4 py-2 whitespace-nowrap text-slate-700 dark:text-slate-300">{entry.user_email ?? "—"}</td>
+                  <td className="px-4 py-2 whitespace-nowrap font-mono text-xs text-slate-700 dark:text-slate-300">{entry.action}</td>
+                  <td className="px-4 py-2 whitespace-nowrap text-slate-700 dark:text-slate-300">
                     {entry.resource ? `${entry.resource}${entry.resource_id ? ` #${entry.resource_id}` : ""}` : "—"}
                   </td>
                   <td className="px-4 py-2 whitespace-nowrap">

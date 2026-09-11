@@ -55,7 +55,7 @@ export function ChildRecordForm({
   const fieldErrors = error instanceof ApiError ? error.fieldErrors : {};
 
   return (
-    <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+    <div className="rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 p-3">
       {Boolean(error) && (
         <div className="mb-2">
           <ApiErrorAlert error={error} />

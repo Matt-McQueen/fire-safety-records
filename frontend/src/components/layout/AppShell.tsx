@@ -10,7 +10,7 @@ export function AppShell() {
     <div className="flex h-screen flex-col">
       <Topbar onMenuClick={() => setMobileOpen(true)} />
       <div className="flex min-h-0 flex-1">
-        <aside className="hidden w-60 shrink-0 border-r border-slate-200 bg-white lg:block">
+        <aside className="hidden w-60 shrink-0 border-r border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 lg:block">
           <Sidebar />
         </aside>
 
@@ -21,7 +21,7 @@ export function AppShell() {
               onClick={() => setMobileOpen(false)}
               aria-label="Close menu"
             />
-            <aside className="absolute inset-y-0 left-0 w-64 bg-white shadow-xl">
+            <aside className="absolute inset-y-0 left-0 w-64 bg-white dark:bg-slate-900 shadow-xl">
               <Sidebar onNavigate={() => setMobileOpen(false)} />
             </aside>
           </div>

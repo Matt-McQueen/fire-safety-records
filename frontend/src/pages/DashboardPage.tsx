@@ -21,7 +21,7 @@ export default function DashboardPage() {
       {isLoading ? (
         <CenteredSpinner label="Loading premises…" />
       ) : premises.length === 0 ? (
-        <Card className="p-6 text-sm text-slate-500">
+        <Card className="p-6 text-sm text-slate-500 dark:text-slate-400">
           Your account has not been granted access to any premises yet. Ask an administrator to grant access
           under Users.
         </Card>
@@ -44,7 +44,7 @@ function SinglePremisesCompliance({ premisesId, name }: { premisesId: number; na
   return (
     <div>
       <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-base font-semibold text-slate-800">{name}</h2>
+        <h2 className="text-base font-semibold text-slate-800 dark:text-slate-200">{name}</h2>
         <Link to={`/premises/${premisesId}`}>
           <Button size="sm">View premises</Button>
         </Link>
@@ -79,7 +79,7 @@ function PremisesGrid({ premisesIds }: { premisesIds: number[] }) {
         return (
           <Link key={id} to={`/premises/${id}`}>
             <Card className="h-full p-4 transition-shadow hover:shadow-md">
-              <p className="mb-2 font-medium text-slate-800">{name ?? `Premises ${id}`}</p>
+              <p className="mb-2 font-medium text-slate-800 dark:text-slate-200">{name ?? `Premises ${id}`}</p>
               {result.isLoading ? (
                 <Spinner className="h-5 w-5" />
               ) : (
@@ -99,9 +99,9 @@ function PremisesGrid({ premisesIds }: { premisesIds: number[] }) {
 
 function SummaryPill({ label, count, tone }: { label: string; count: number; tone: "green" | "amber" | "red" }) {
   return (
-    <div className="flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2">
+    <div className="flex items-center gap-2 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2">
       <Badge tone={tone}>{count}</Badge>
-      <span className="text-sm text-slate-600">{label}</span>
+      <span className="text-sm text-slate-600 dark:text-slate-400">{label}</span>
     </div>
   );
 }

@@ -67,7 +67,7 @@ export default function UsersListPage() {
       {error ? (
         <ApiErrorAlert error={error} />
       ) : (
-        <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
+        <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm">
           <ResourceTable
             columns={COLUMNS}
             rows={data?.data ?? []}

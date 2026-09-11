@@ -35,7 +35,7 @@ export function ResourceTable({
     <div className="overflow-x-auto">
       <table className="w-full min-w-max text-left text-sm">
         <thead>
-          <tr className="border-b border-slate-200 text-xs font-medium tracking-wide text-slate-500 uppercase">
+          <tr className="border-b border-slate-200 dark:border-slate-700 text-xs font-medium tracking-wide text-slate-500 dark:text-slate-400 uppercase">
             {columns.map((col) => (
               <th key={col.key} className="px-4 py-2.5 whitespace-nowrap">
                 {col.label}
@@ -43,21 +43,21 @@ export function ResourceTable({
             ))}
           </tr>
         </thead>
-        <tbody className="divide-y divide-slate-100">
+        <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
           {rows.map((row) => {
             const rowId = String(row[idColumn]);
             const href = linkTo?.(row);
             return (
-              <tr key={rowId} className={href ? "hover:bg-slate-50" : ""}>
+              <tr key={rowId} className={href ? "hover:bg-slate-50 dark:hover:bg-slate-800" : ""}>
                 {columns.map((col) =>
                   href ? (
                     <td key={col.key} className="p-0">
-                      <Link to={href} className="block px-4 py-2.5 whitespace-nowrap text-slate-700">
+                      <Link to={href} className="block px-4 py-2.5 whitespace-nowrap text-slate-700 dark:text-slate-300">
                         {cellContent(col, row)}
                       </Link>
                     </td>
                   ) : (
-                    <td key={col.key} className="px-4 py-2.5 whitespace-nowrap text-slate-700">
+                    <td key={col.key} className="px-4 py-2.5 whitespace-nowrap text-slate-700 dark:text-slate-300">
                       {cellContent(col, row)}
                     </td>
                   ),

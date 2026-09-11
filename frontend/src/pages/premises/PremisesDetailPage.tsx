@@ -51,12 +51,12 @@ export default function PremisesDetailPage() {
         }
       />
 
-      <div className="mb-4 flex gap-1 border-b border-slate-200">
+      <div className="mb-4 flex gap-1 border-b border-slate-200 dark:border-slate-700">
         {TABS.map((t) => (
           <button
             key={t}
             className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium ${
-              tab === t ? "border-red-700 text-red-800" : "border-transparent text-slate-500 hover:text-slate-800"
+              tab === t ? "border-red-700 text-red-800 dark:text-red-300" : "border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100"
             }`}
             onClick={() => setTab(t)}
           >
@@ -103,15 +103,15 @@ function OverviewTab({ premises }: { premises: Record<string, unknown> }) {
       <dl className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
         {rows.map(([label, value]) => (
           <div key={label}>
-            <dt className="text-xs font-medium text-slate-500">{label}</dt>
-            <dd className="text-sm text-slate-800">{String(value)}</dd>
+            <dt className="text-xs font-medium text-slate-500 dark:text-slate-400">{label}</dt>
+            <dd className="text-sm text-slate-800 dark:text-slate-200">{String(value)}</dd>
           </div>
         ))}
       </dl>
       {Boolean(premises.notes) && (
-        <div className="mt-4 border-t border-slate-100 pt-4">
-          <dt className="text-xs font-medium text-slate-500">Notes</dt>
-          <dd className="mt-1 text-sm whitespace-pre-wrap text-slate-800">{String(premises.notes)}</dd>
+        <div className="mt-4 border-t border-slate-100 dark:border-slate-800 pt-4">
+          <dt className="text-xs font-medium text-slate-500 dark:text-slate-400">Notes</dt>
+          <dd className="mt-1 text-sm whitespace-pre-wrap text-slate-800 dark:text-slate-200">{String(premises.notes)}</dd>
         </div>
       )}
     </Card>
@@ -133,7 +133,7 @@ function RecordsTab({ premisesId }: { premisesId: number }) {
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
       {links.map((link) => (
         <Link key={link.to} to={link.to}>
-          <Card className="p-4 text-sm font-medium text-slate-700 transition-shadow hover:shadow-md">
+          <Card className="p-4 text-sm font-medium text-slate-700 dark:text-slate-300 transition-shadow hover:shadow-md">
             {link.label} →
           </Card>
         </Link>

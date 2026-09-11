@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { listResource } from "../../lib/api";
 
 const BASE_INPUT =
-  "block w-full rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-red-600 focus:outline focus:outline-2 focus:-outline-offset-1 focus:outline-red-600 disabled:bg-slate-100 disabled:text-slate-500";
+  "block w-full rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-1.5 text-sm text-slate-900 dark:text-slate-100 shadow-sm placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-red-600 focus:outline focus:outline-2 focus:-outline-offset-1 focus:outline-red-600 disabled:bg-slate-100 dark:disabled:bg-slate-800 disabled:text-slate-500 dark:disabled:text-slate-400";
 
 export function FormField({
   label,
@@ -22,12 +22,12 @@ export function FormField({
 }) {
   return (
     <div>
-      <label htmlFor={htmlFor} className="block text-sm font-medium text-slate-700">
+      <label htmlFor={htmlFor} className="block text-sm font-medium text-slate-700 dark:text-slate-300">
         {label}
         {required && <span className="text-red-600"> *</span>}
       </label>
       <div className="mt-1">{children}</div>
-      {help && !error && <p className="mt-1 text-xs text-slate-500">{help}</p>}
+      {help && !error && <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{help}</p>}
       {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
     </div>
   );
@@ -54,11 +54,11 @@ export function Checkbox({
   ...props
 }: InputHTMLAttributes<HTMLInputElement> & { label: string }) {
   return (
-    <label className="flex items-center gap-2 text-sm text-slate-700">
+    <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
       <input
         type="checkbox"
         {...props}
-        className="h-4 w-4 rounded border-slate-300 text-red-700 focus:ring-red-600"
+        className="h-4 w-4 rounded border-slate-300 dark:border-slate-600 text-red-700 dark:text-red-400 focus:ring-red-600"
       />
       {label}
     </label>

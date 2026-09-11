@@ -19,15 +19,15 @@ export function ComplianceChecklist({
   if (!checks) return null;
 
   return (
-    <ul className="divide-y divide-slate-100">
+    <ul className="divide-y divide-slate-100 dark:divide-slate-800">
       {checks.map((check) => {
         const badge = STATUS_BADGE[check.status];
         return (
           <li key={check.key} className="px-4 py-3">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <p className="text-sm font-medium text-slate-800">{check.summary}</p>
-                <p className="mt-0.5 text-xs text-slate-400">{check.provision}</p>
+                <p className="text-sm font-medium text-slate-800 dark:text-slate-200">{check.summary}</p>
+                <p className="mt-0.5 text-xs text-slate-400 dark:text-slate-500">{check.provision}</p>
               </div>
               <Badge tone={badge.tone}>{badge.text}</Badge>
             </div>

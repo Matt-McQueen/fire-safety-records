@@ -1,5 +1,10 @@
 @import "tailwindcss";
 
+/* Dark mode is toggled by a `.dark` class on <html> (see ThemeContext.tsx)
+ * rather than only following the OS preference, so `dark:` utilities below
+ * respond to the user's explicit choice. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
 }
@@ -8,8 +13,16 @@ html {
   color-scheme: light;
 }
 
+html.dark {
+  color-scheme: dark;
+}
+
 body {
   background-color: var(--color-slate-50);
+}
+
+html.dark body {
+  background-color: var(--color-slate-950);
 }
 
 /* Firefox: form control accents match the app's brand colour. */

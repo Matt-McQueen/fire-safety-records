@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 
 export function Card({ children, className = "" }: { children: ReactNode; className?: string }) {
   return (
-    <div className={`rounded-lg border border-slate-200 bg-white shadow-sm ${className}`}>
+    <div className={`rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm ${className}`}>
       {children}
     </div>
   );
@@ -11,7 +11,7 @@ export function Card({ children, className = "" }: { children: ReactNode; classN
 
 export function Spinner({ className = "h-5 w-5" }: { className?: string }) {
   return (
-    <svg className={`animate-spin text-slate-400 ${className}`} viewBox="0 0 24 24" fill="none">
+    <svg className={`animate-spin text-slate-400 dark:text-slate-500 ${className}`} viewBox="0 0 24 24" fill="none">
       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
     </svg>
@@ -20,7 +20,7 @@ export function Spinner({ className = "h-5 w-5" }: { className?: string }) {
 
 export function CenteredSpinner({ label }: { label?: string }) {
   return (
-    <div className="flex flex-col items-center justify-center gap-3 py-16 text-slate-400">
+    <div className="flex flex-col items-center justify-center gap-3 py-16 text-slate-400 dark:text-slate-500">
       <Spinner className="h-8 w-8" />
       {label && <p className="text-sm">{label}</p>}
     </div>
@@ -30,10 +30,10 @@ export function CenteredSpinner({ label }: { label?: string }) {
 type AlertTone = "error" | "warning" | "info" | "success";
 
 const ALERT_CLASSES: Record<AlertTone, string> = {
-  error: "border-red-200 bg-red-50 text-red-800",
-  warning: "border-amber-200 bg-amber-50 text-amber-900",
-  info: "border-sky-200 bg-sky-50 text-sky-900",
-  success: "border-emerald-200 bg-emerald-50 text-emerald-900",
+  error: "border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/40 text-red-800 dark:text-red-300",
+  warning: "border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/40 text-amber-900 dark:text-amber-200",
+  info: "border-sky-200 dark:border-sky-900 bg-sky-50 dark:bg-sky-950/40 text-sky-900 dark:text-sky-200",
+  success: "border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-900 dark:text-emerald-200",
 };
 
 export function Alert({
@@ -79,11 +79,11 @@ export function ApiErrorAlert({ error }: { error: unknown }) {
 type BadgeTone = "neutral" | "green" | "amber" | "red" | "blue";
 
 const BADGE_CLASSES: Record<BadgeTone, string> = {
-  neutral: "bg-slate-100 text-slate-700",
-  green: "bg-emerald-100 text-emerald-800",
-  amber: "bg-amber-100 text-amber-800",
-  red: "bg-red-100 text-red-800",
-  blue: "bg-sky-100 text-sky-800",
+  neutral: "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300",
+  green: "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-300",
+  amber: "bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300",
+  red: "bg-red-100 dark:bg-red-900/40 text-red-800 dark:text-red-300",
+  blue: "bg-sky-100 dark:bg-sky-900/40 text-sky-800 dark:text-sky-300",
 };
 
 export function Badge({ tone = "neutral", children }: { tone?: BadgeTone; children: ReactNode }) {
@@ -106,9 +106,9 @@ export function EmptyState({
   action?: ReactNode;
 }) {
   return (
-    <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-slate-300 py-14 text-center">
-      <p className="font-medium text-slate-700">{title}</p>
-      {message && <p className="max-w-sm text-sm text-slate-500">{message}</p>}
+    <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-slate-300 dark:border-slate-600 py-14 text-center">
+      <p className="font-medium text-slate-700 dark:text-slate-300">{title}</p>
+      {message && <p className="max-w-sm text-sm text-slate-500 dark:text-slate-400">{message}</p>}
       {action && <div className="mt-2">{action}</div>}
     </div>
   );
@@ -129,12 +129,12 @@ export function PageHeader({
     <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
       <div>
         {breadcrumb && breadcrumb.length > 0 && (
-          <nav className="mb-1 flex items-center gap-1.5 text-sm text-slate-400">
+          <nav className="mb-1 flex items-center gap-1.5 text-sm text-slate-400 dark:text-slate-500">
             {breadcrumb.map((item, i) => (
               <span key={i} className="flex items-center gap-1.5">
                 {i > 0 && <span>/</span>}
                 {item.to ? (
-                  <Link to={item.to} className="hover:text-slate-600 hover:underline">
+                  <Link to={item.to} className="hover:text-slate-600 dark:hover:text-slate-300 hover:underline">
                     {item.label}
                   </Link>
                 ) : (
@@ -144,8 +144,8 @@ export function PageHeader({
             ))}
           </nav>
         )}
-        <h1 className="text-xl font-semibold text-slate-900">{title}</h1>
-        {description && <p className="mt-1 text-sm text-slate-500">{description}</p>}
+        <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">{title}</h1>
+        {description && <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{description}</p>}
       </div>
       {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
     </div>
@@ -168,13 +168,13 @@ export function Pagination({
   const hasNext = total === undefined ? true : offset + limit < total;
 
   return (
-    <div className="flex items-center justify-between border-t border-slate-200 px-4 py-3 text-sm text-slate-500">
+    <div className="flex items-center justify-between border-t border-slate-200 dark:border-slate-700 px-4 py-3 text-sm text-slate-500 dark:text-slate-400">
       <p>
         {total !== undefined ? (
           <>
-            Showing <span className="font-medium text-slate-700">{Math.min(offset + 1, total)}</span>–
-            <span className="font-medium text-slate-700">{Math.min(offset + limit, total)}</span> of{" "}
-            <span className="font-medium text-slate-700">{total}</span>
+            Showing <span className="font-medium text-slate-700 dark:text-slate-300">{Math.min(offset + 1, total)}</span>–
+            <span className="font-medium text-slate-700 dark:text-slate-300">{Math.min(offset + limit, total)}</span> of{" "}
+            <span className="font-medium text-slate-700 dark:text-slate-300">{total}</span>
           </>
         ) : (
           `Page ${page}`
@@ -182,14 +182,14 @@ export function Pagination({
       </p>
       <div className="flex gap-2">
         <button
-          className="rounded-md border border-slate-300 bg-white px-2.5 py-1 disabled:cursor-not-allowed disabled:opacity-40"
+          className="rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-2.5 py-1 disabled:cursor-not-allowed disabled:opacity-40"
           disabled={offset === 0}
           onClick={() => onChange(Math.max(0, offset - limit))}
         >
           Previous
         </button>
         <button
-          className="rounded-md border border-slate-300 bg-white px-2.5 py-1 disabled:cursor-not-allowed disabled:opacity-40"
+          className="rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-2.5 py-1 disabled:cursor-not-allowed disabled:opacity-40"
           disabled={!hasNext}
           onClick={() => onChange(offset + limit)}
         >
