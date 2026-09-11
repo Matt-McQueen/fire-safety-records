@@ -56,6 +56,11 @@ hash.
   edit and delete a record through the generic list/create/edit engine that
   everything except premises, fire risk assessments, equipment and escape
   routes is served by (driven here via "people" — see resources/configs.ts).
+- `tests/equipment-checks.spec.js` — signed in as admin: recording a check is
+  refused without saying who did it or, for anything but a pass, what was
+  found; a check history then blocks deleting the equipment outright (only
+  taking it out of service is left); and the equipment's "defect outstanding"
+  status tracks its most recent check, not its oldest unresolved one.
 - `tests/role-access.spec.js` — signed in as viewer: the frontend actually
   hides admin-only navigation and actions, and 404s an admin-only route,
   rather than relying on the API alone to refuse it.
