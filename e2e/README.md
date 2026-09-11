@@ -71,6 +71,13 @@ hash.
   escape_routes, only beforeDelete), and - never given a check - it can
   actually be deleted, which escape-route-checks.spec.js's route never
   reaches.
+- `tests/enforcement-notice-lifecycle.spec.js` — an alterations notice's own
+  in force → withdrawn lifecycle: while in force it's one of the three
+  triggers for the duty to record, independent of employee count or a
+  licence (the `premises_recording_duty` view), and can't be deleted; marking
+  it no longer in force needs to say why (withdrawn or complied with); once
+  withdrawn the duty it was the only trigger for stops applying, and it can
+  then be deleted.
 - `tests/compliance-dashboard.spec.js` — signed in as admin, on a dedicated
   premises of its own: the dashboard's computed compliance checklist
   (`GET /api/premises/:id/compliance`) matches a freshly created premises'
