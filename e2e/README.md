@@ -74,6 +74,11 @@ hash.
   reflected in the list, deactivation actually blocks it from signing in
   again, an admin can't demote/deactivate their own account, and the audit
   trail records all three account changes.
+- `tests/audit-log.spec.js` — the audit log's Outcome filter actually finds
+  the other two outcomes besides success: a wrong password ("failure"), and
+  a manager refused for trying to mark a check schedule statutory - a 403
+  raised well past the endpoint's own role gate, which the generic error
+  handler audits the same as any other ("denied").
 - `tests/role-access.spec.js` — signed in as viewer: the frontend actually
   hides admin-only navigation and actions, and 404s an admin-only route,
   rather than relying on the API alone to refuse it.
