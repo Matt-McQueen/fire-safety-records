@@ -91,6 +91,12 @@ hash.
 - `tests/role-access.spec.js` — signed in as viewer: the frontend actually
   hides admin-only navigation and actions, and 404s an admin-only route,
   rather than relying on the API alone to refuse it.
+- `tests/dark-mode.spec.js` — defaults to the system's colour scheme when
+  nothing is stored yet, and a toggled choice persists across a reload and
+  overrides system preference from the very first paint - not just once
+  React has mounted - covering index.html's pre-React inline script as well
+  as lib/ThemeContext.tsx. Doesn't sign in for the first check: theme applies
+  outside auth entirely.
 - `global-teardown.js` — deletes everything `global.setup.js` created.
 
 `.auth/` is gitignored — it's per-run session state, not something to commit.
