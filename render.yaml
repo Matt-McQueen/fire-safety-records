@@ -1,0 +1,63 @@
+# Render blueprint for the fire safety records API.
+#
+# The API runs on Render; the database stays on Supabase and the frontend on
+# Cloudflare Pages. Only the API needs a Node process, so this is the one
+# service here — which matters, because Render's 750 free instance hours are
+# granted per workspace per month, not per service. One always-on service is
+# about 730 hours, so a second free service would put the workspace over.
+
+services:
+  - type: web
+    name: fire-safety-records-api
+    runtime: node
+    plan: free
+    # Set this to the region your Supabase project is in. Every request makes
+    # at least one round trip to Postgres, so a mismatch here costs more than
+    # anything else on this page.
+    region: frankfurt
+    rootDir: backend
+    buildCommand: npm ci
+    startCommand: npm start
+    # Used to decide whether a deploy succeeded. /api/health is the only
+    # endpoint that does not require an access token, which is what makes it
+    # usable here. Note that this does not keep a free instance awake: it
+    # still spins down after 15 minutes without inbound traffic.
+    healthCheckPath: /api/health
+
+    envVars:
+      - key: NODE_ENV
+        value: production
+
+      # scrypt needs roughly 128 * N * r bytes per hash in flight, which is
+      # 64 MiB at the application default of N=65536. A free Render instance
+      # has 512 MB of RAM and 0.1 CPU, so that default gives about six
+      # concurrent sign-ins before the instance is killed for running out of
+      # memory, and roughly a second of CPU per hash. N=16384 costs 16 MiB and
+      # about a quarter of the CPU, which fits.
+      #
+      # This is a concession to the instance size, not a better setting: it is
+      # below the OWASP minimum. Raise it to 65536 on any host with real
+      # memory. Existing hashes record the cost they were made with, so they
+      # keep verifying either way and are upgraded at the owner's next
+      # sign-in — changing this number never invalidates a password.
+      - key: SCRYPT_COST
+        value: 16384
+
+      # Kept well under Supabase's per-project client cap, since the pooler
+      # counts every connection this process holds open.
+      - key: PG_POOL_MAX
+        value: 5
+
+      # Generated once by Render and then held stable. Rotating it would
+      # invalidate every outstanding access token.
+      - key: JWT_SECRET
+        generateValue: true
+
+      # Set these in the Render dashboard; they are deliberately not in the
+      # repository. DATABASE_URL is the Supabase *pooler* URI, not the direct
+      # connection, which is IPv6-only on the free plan.
+      - key: DATABASE_URL
+        sync: false
+      # The Pages origin, e.g. https://fire-safety-records.pages.dev
+      - key: CORS_ORIGINS
+        sync: false
