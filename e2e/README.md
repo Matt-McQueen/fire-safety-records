@@ -92,6 +92,13 @@ hash.
   working is tested, and a record of a problem with nothing done about it
   isn't evidence of that); also covers fire_drills' place in the compliance
   checklist as a live check - "missing" with none recorded, "ok" once one is.
+- `tests/training-records-lifecycle.spec.js` — reg 20(4) requires training to
+  happen during working hours, so a record saying it didn't has to explain
+  why rather than leave that as a bare flag; a next_due_on before the
+  delivery date is refused as incoherent regardless; and covers training's
+  place in the compliance checklist through all three statuses - "missing"
+  with none recorded, "ok" once one is, "attention" once one is actually
+  overdue - agreeing with that record's own "Overdue" badge on the list.
 - `tests/compliance-dashboard.spec.js` — signed in as admin, on a dedicated
   premises of its own: the dashboard's computed compliance checklist
   (`GET /api/premises/:id/compliance`) matches a freshly created premises'
@@ -182,6 +189,24 @@ database's capacity relative to how much this suite has grown, not something
 client-side configuration alone fully solves - narrowing it further would
 need visibility this suite doesn't have into what else is using the
 project's connections at the same time.
+
+Worth tracking as this suite keeps growing: at 28 spec files, a full run hit
+this on a quarter of them at once, including - for the first time - a
+brand-new spec file on the very first run it was ever part of, at the exact
+same generic step (the first UI action after signing in) other affected
+files hit it at. That's expected given the mechanism (any test's first
+network round trip can lose the race for a connection, regardless of what
+the test does), not evidence the new file itself is special - but it does
+mean the rate is climbing with the suite's size, not staying flat. Retrying
+automatically (Playwright's `retries` option) was deliberately not reached
+for here: most spec files compute their tagged names and emails once via
+`test.beforeAll`, the same value on every attempt, so retrying a test that
+had already gotten partway through creating something (an account, in
+particular - `users_email_lower_key` is a real uniqueness constraint) would
+hit a conflict from its own first attempt rather than a clean rerun. Making
+that safe would mean revisiting how every spec file tags what it creates,
+which is a larger, deliberate change and not one to make as a side effect of
+adding another test.
 
 One symptom worth naming so it doesn't look like a separate problem: if this
 hits the *first* test in `role-access.spec.js` (its tests share one browser
