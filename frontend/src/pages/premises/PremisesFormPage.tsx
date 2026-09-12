@@ -1,66 +1,19 @@
-import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createResource, getResource, removeResource, updateResource } from "../../lib/api";
-import { useAuth } from "../../lib/AuthContext";
-import { atLeast } from "../../lib/roles";
 import { ApiError } from "../../lib/http";
 import { PREMISES_FIELDS } from "../../resources/premises";
 import { Button } from "../../components/ui/Button";
 import { ApiErrorAlert, Card, CenteredSpinner, PageHeader } from "../../components/ui/primitives";
 import { ResourceForm } from "../../components/resource/ResourceForm";
-import type { FormValues } from "../../components/resource/ResourceForm";
 import NotFoundPage from "../NotFoundPage";
+import { usePremisesForm } from "./usePremisesForm";
 
 export default function PremisesFormPage() {
   const { id } = useParams();
   const isNew = id === "new" || id === undefined;
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const { user } = useAuth();
 
-  const { data, isLoading } = useQuery({
-    queryKey: ["resource", "premises", id],
-    queryFn: () => getResource("/premises", id!),
-    enabled: !isNew,
-  });
-
-  const [values, setValues] = useState<FormValues>({});
-  const [submitError, setSubmitError] = useState<unknown>(null);
-
-  useEffect(() => {
-    if (data) setValues(data.data);
-  }, [data]);
-
-  const canWrite = user !== null && atLeast(user.role, isNew ? "manager" : "manager");
-  const canRemove = user !== null && atLeast(user.role, "admin");
-
-  const saveMutation = useMutation({
-    mutationFn: async () => {
-      if (isNew) return createResource("/premises", values);
-      return updateResource("/premises", id!, changedFields(values, data?.data ?? {}));
-    },
-    onSuccess: (result) => {
-      queryClient.invalidateQueries({ queryKey: ["resource-list", "premises"] });
-      queryClient.invalidateQueries({ queryKey: ["premises", "picker"] });
-      // Without this, the detail page - keyed the same as this page's own
-      // query - serves this page's now-stale copy for up to staleTime (15s,
-      // see lib/queryClient.ts) instead of what was just saved.
-      queryClient.invalidateQueries({ queryKey: ["resource", "premises", String(result.data.id)] });
-      navigate(`/premises/${result.data.id}`);
-    },
-    onError: (err) => setSubmitError(err),
-  });
-
-  const removeMutation = useMutation({
-    mutationFn: () => removeResource("/premises", id!),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["resource-list", "premises"] });
-      queryClient.invalidateQueries({ queryKey: ["premises", "picker"] });
-      navigate("/premises");
-    },
-    onError: (err) => setSubmitError(err),
-  });
+  const { data, isLoading, values, setValues, submitError, canWrite, canRemove, saveMutation, removeMutation } =
+    usePremisesForm(id, isNew);
 
   if (!isNew && isLoading) return <CenteredSpinner label="Loading…" />;
   if (!isNew && !data) return <NotFoundPage />;
@@ -124,13 +77,4 @@ export default function PremisesFormPage() {
       </Card>
     </div>
   );
-}
-
-function changedFields(values: FormValues, original: FormValues): FormValues {
-  const result: FormValues = {};
-  for (const field of PREMISES_FIELDS) {
-    const { key } = field;
-    if (values[key] !== original[key]) result[key] = values[key] ?? null;
-  }
-  return result;
 }
