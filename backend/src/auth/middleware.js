@@ -4,7 +4,6 @@
 // and /api/auth/login, so an endpoint cannot be reachable unauthenticated by
 // being forgotten. `requireRole` and the premises checks then narrow it.
 
-import { config } from "../config/env.js";
 import { forbidden, notFound, unauthorised } from "../http/errors.js";
 import { query } from "../db/db.js";
 import { passwordEpoch, verifyAccessToken } from "./tokens.js";
@@ -120,5 +119,3 @@ export async function loadPremisesIds(userId, role, client) {
   );
   return rows.map((row) => row.premises_id);
 }
-
-export const refreshCookieName = config.auth.cookieName;

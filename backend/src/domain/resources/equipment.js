@@ -600,4 +600,3 @@ async function requireRow(client, table, rowId, label) {
   return rows[0];
 }
 
-export { EQUIPMENT_TYPES, OUTCOMES };

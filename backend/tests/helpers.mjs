@@ -185,7 +185,7 @@ export async function makePerson(overrides = {}) {
 // Deleting the premises cascades through every record held against it, and the
 // people and users are matched by the run's marker. Done in SQL, not through
 // the API, because several of the API's own rules exist to stop exactly this.
-export async function cleanup() {
+async function cleanup() {
   await pool.query("DELETE FROM audit_log WHERE user_id = ANY($1)", [createdUserIds]);
   await pool.query("DELETE FROM users WHERE email LIKE $1", [`${marker}-%`]);
   await pool.query("DELETE FROM premises WHERE name LIKE $1", [`[${marker}]%`]);

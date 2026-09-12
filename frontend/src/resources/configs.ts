@@ -28,7 +28,7 @@ const PREMISES_FILTER = {
 
 // --- people ------------------------------------------------------------
 
-export const people: ResourceConfig = {
+const people: ResourceConfig = {
   name: "people",
   label: "Person",
   labelPlural: "People",
@@ -85,7 +85,7 @@ const SAFETY_ROLE_LABELS: Record<string, string> = {
   other: "Other",
 };
 
-export const safetyRoles: ResourceConfig = {
+const safetyRoles: ResourceConfig = {
   name: "safety_roles",
   label: "Safety role",
   labelPlural: "Safety roles",
@@ -143,7 +143,7 @@ export const safetyRoles: ResourceConfig = {
 
 // --- fire safety arrangements (reg 10) -----------------------------------
 
-export const arrangements: ResourceConfig = {
+const arrangements: ResourceConfig = {
   name: "fire_safety_arrangements",
   label: "Fire safety arrangement",
   labelPlural: "Fire safety arrangements",
@@ -200,7 +200,7 @@ export const arrangements: ResourceConfig = {
 
 // --- dangerous substances (regs 6-7, DSEAR) ------------------------------
 
-export const dangerousSubstances: ResourceConfig = {
+const dangerousSubstances: ResourceConfig = {
   name: "dangerous_substances",
   label: "Dangerous substance",
   labelPlural: "Dangerous substances",
@@ -261,7 +261,7 @@ export const dangerousSubstances: ResourceConfig = {
 
 // --- check schedules -------------------------------------------------------
 
-export const checkSchedules: ResourceConfig = {
+const checkSchedules: ResourceConfig = {
   name: "check_schedules",
   label: "Check schedule",
   labelPlural: "Check schedules",
@@ -307,7 +307,7 @@ export const checkSchedules: ResourceConfig = {
 
 // --- emergency procedures (reg 14) ---------------------------------------
 
-export const emergencyProcedures: ResourceConfig = {
+const emergencyProcedures: ResourceConfig = {
   name: "emergency_procedures",
   label: "Emergency procedure",
   labelPlural: "Emergency procedures",
@@ -349,7 +349,7 @@ export const emergencyProcedures: ResourceConfig = {
 
 // --- fire drills -----------------------------------------------------------
 
-export const fireDrills: ResourceConfig = {
+const fireDrills: ResourceConfig = {
   name: "fire_drills",
   label: "Fire drill",
   labelPlural: "Fire drills",
@@ -413,7 +413,7 @@ const TRAINING_TYPE_LABELS: Record<string, string> = {
   other: "Other",
 };
 
-export const trainingRecords: ResourceConfig = {
+const trainingRecords: ResourceConfig = {
   name: "training_records",
   label: "Training record",
   labelPlural: "Training records",
@@ -481,7 +481,7 @@ const INFORMATION_TYPE_LABELS: Record<string, string> = {
   other: "Other",
 };
 
-export const informationRecords: ResourceConfig = {
+const informationRecords: ResourceConfig = {
   name: "employee_information_records",
   label: "Information record",
   labelPlural: "Information records",
@@ -533,7 +533,7 @@ export const informationRecords: ResourceConfig = {
 
 // --- cooperation records (reg 18) ------------------------------------------
 
-export const cooperationRecords: ResourceConfig = {
+const cooperationRecords: ResourceConfig = {
   name: "cooperation_records",
   label: "Cooperation record",
   labelPlural: "Cooperation records",
@@ -568,7 +568,7 @@ export const cooperationRecords: ResourceConfig = {
 
 // --- health and safety policies (HSWA 1974 s.2(3)) -------------------------
 
-export const healthSafetyPolicies: ResourceConfig = {
+const healthSafetyPolicies: ResourceConfig = {
   name: "health_safety_policies",
   label: "Health and safety policy",
   labelPlural: "Health and safety policies",
@@ -619,7 +619,7 @@ const INCIDENT_TYPE_LABELS: Record<string, string> = {
   other: "Other",
 };
 
-export const incidents: ResourceConfig = {
+const incidents: ResourceConfig = {
   name: "incidents",
   label: "Incident",
   labelPlural: "Incidents",
@@ -697,7 +697,7 @@ const NOTICE_TYPE_LABELS: Record<string, string> = {
   other: "Other",
 };
 
-export const enforcementNotices: ResourceConfig = {
+const enforcementNotices: ResourceConfig = {
   name: "enforcement_notices",
   label: "Enforcement notice",
   labelPlural: "Enforcement notices",
@@ -754,7 +754,7 @@ export const enforcementNotices: ResourceConfig = {
 
 // --- enforcement visits ------------------------------------------------------
 
-export const enforcementVisits: ResourceConfig = {
+const enforcementVisits: ResourceConfig = {
   name: "enforcement_visits",
   label: "Enforcement visit",
   labelPlural: "Enforcement visits",
@@ -791,7 +791,7 @@ export const enforcementVisits: ResourceConfig = {
 
 // --- reference tables (list only) -------------------------------------------
 
-export const legalBasis: ResourceConfig = {
+const legalBasis: ResourceConfig = {
   name: "legal_basis",
   label: "Legal basis",
   labelPlural: "Legal basis catalogue",
@@ -815,7 +815,7 @@ export const legalBasis: ResourceConfig = {
   fields: [],
 };
 
-export const schedule2Measures: ResourceConfig = {
+const schedule2Measures: ResourceConfig = {
   name: "schedule2_measures",
   label: "Schedule 2 measure",
   labelPlural: "Schedule 2 measures",

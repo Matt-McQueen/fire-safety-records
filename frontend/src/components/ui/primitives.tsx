@@ -9,7 +9,7 @@ export function Card({ children, className = "" }: { children: ReactNode; classN
   );
 }
 
-export function Spinner({ className = "h-5 w-5" }: { className?: string }) {
+function Spinner({ className = "h-5 w-5" }: { className?: string }) {
   return (
     <svg className={`animate-spin text-slate-400 dark:text-slate-500 ${className}`} viewBox="0 0 24 24" fill="none">
       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />

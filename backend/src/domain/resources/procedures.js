@@ -450,4 +450,3 @@ export const healthSafetyPolicies = versionedDocument({
   },
 });
 
-export { TRAINING_TYPES, INFORMATION_TYPES };

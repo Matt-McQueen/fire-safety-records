@@ -301,4 +301,3 @@ export const enforcementVisits = {
   },
 };
 
-export { INCIDENT_TYPES, NOTICE_TYPES, RIDDOR_REPORT_DAYS };

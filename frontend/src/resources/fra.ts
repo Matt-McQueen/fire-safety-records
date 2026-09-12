@@ -89,7 +89,7 @@ export const MEASURE_FIELDS: FieldConfig[] = [
   { key: "completed_on", label: "Completed on", field: { kind: "date" }, help: "Required for a taken measure." },
 ];
 
-export const PERSON_AT_RISK_CATEGORIES = [
+const PERSON_AT_RISK_CATEGORIES = [
   "disabled",
   "mobility_impaired",
   "sensory_impaired",

@@ -50,7 +50,7 @@ import {
 
 // Every table in the schema is represented. Adding one here is what publishes
 // it; there is no other route to the database.
-export const RESOURCES = [
+const RESOURCES = [
   premises,
   people,
   safetyRoles,

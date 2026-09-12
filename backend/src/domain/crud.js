@@ -405,4 +405,4 @@ function clamp(value, min, max) {
   return Math.min(Math.max(Number(value) || min, min), max);
 }
 
-export { MAX_LIMIT, DEFAULT_LIMIT };
+export { MAX_LIMIT };

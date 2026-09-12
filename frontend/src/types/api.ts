@@ -49,7 +49,3 @@ export interface ApiErrorBody {
  * a numeric `id`; the two reference tables (legal_basis, schedule2_measures)
  * are keyed by a string `code` instead — see ResourceConfig.idColumn. */
 export type Row = Record<string, unknown>;
-
-export function rowKey(row: Row, idColumn = "id"): string | number {
-  return row[idColumn] as string | number;
-}
