@@ -1,16 +1,16 @@
 import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { getResource, listResource, removeResource, updateResource } from "../../lib/api";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { getResource, listResource } from "../../lib/api";
 import { useAuth } from "../../lib/AuthContext";
 import { atLeast } from "../../lib/roles";
-import { ApiError } from "../../lib/http";
 import { ESCAPE_ROUTE_CHECK_FIELDS, ESCAPE_ROUTE_FIELDS, OUTCOME_LABELS } from "../../resources/equipment";
-import { Badge, Card, CenteredSpinner, PageHeader, ApiErrorAlert } from "../../components/ui/primitives";
+import { Badge, Card, CenteredSpinner, PageHeader } from "../../components/ui/primitives";
 import { Button } from "../../components/ui/Button";
-import { ResourceForm } from "../../components/resource/ResourceForm";
-import type { FormValues } from "../../components/resource/ResourceForm";
-import { ChildRecordForm } from "../../components/resource/ChildRecordForm";
+import { DetailField } from "../../components/resource/DetailField";
+import { ResourceEditCard } from "../../components/resource/ResourceEditCard";
+import { ResourceDeleteButton } from "../../components/resource/ResourceDeleteButton";
+import { CheckHistoryList } from "../../components/resource/CheckHistoryList";
 import NotFoundPage from "../NotFoundPage";
 
 const CHECKS_PATH = "/escape-route-checks";
@@ -22,7 +22,6 @@ export default function EscapeRouteDetailPage() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const [editing, setEditing] = useState(false);
-  const [addingCheck, setAddingCheck] = useState(false);
 
   const detailKey = ["resource", "escape_routes", id];
   const { data, isLoading } = useQuery({ queryKey: detailKey, queryFn: () => getResource("/escape-routes", routeId) });
@@ -64,8 +63,10 @@ export default function EscapeRouteDetailPage() {
       </div>
 
       {editing ? (
-        <EditCard
-          route={route}
+        <ResourceEditCard
+          path="/escape-routes"
+          fields={ESCAPE_ROUTE_FIELDS}
+          record={route}
           onDone={() => {
             setEditing(false);
             invalidate();
@@ -75,20 +76,22 @@ export default function EscapeRouteDetailPage() {
       ) : (
         <Card className="p-6">
           <dl className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
-            <Field label="Description" value={route.description} />
-            <Field label="Final exit" value={route.final_exit} />
-            <Field label="Capacity" value={route.capacity} />
-            <Field label="Travel distance (m)" value={route.travel_distance_m} />
-            <Field label="Signage notes" value={route.signage_notes} />
-            <Field label="Last checked" value={route.last_checked_on} />
+            <DetailField label="Description" value={route.description} />
+            <DetailField label="Final exit" value={route.final_exit} />
+            <DetailField label="Capacity" value={route.capacity} />
+            <DetailField label="Travel distance (m)" value={route.travel_distance_m} />
+            <DetailField label="Signage notes" value={route.signage_notes} />
+            <DetailField label="Last checked" value={route.last_checked_on} />
           </dl>
         </Card>
       )}
 
       {canDelete && !editing && (
         <div className="mt-3">
-          <DeleteButton
-            routeId={routeId}
+          <ResourceDeleteButton
+            path="/escape-routes"
+            id={routeId}
+            confirmMessage="Delete this escape route? Refused if it has a check history."
             onDone={() => {
               invalidate();
               navigate("/escape-routes");
@@ -97,133 +100,31 @@ export default function EscapeRouteDetailPage() {
         </div>
       )}
 
-      <div className="mt-6">
-        <h2 className="mb-2 text-sm font-semibold tracking-wide text-slate-500 dark:text-slate-400 uppercase">Check history</h2>
-        <div className="space-y-2">
-          {(checksQuery.data?.data ?? []).map((check) => (
-            <Card key={String(check.id)} className="p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-sm font-medium text-slate-800 dark:text-slate-200">{String(check.performed_on)}</p>
-                  {Boolean(check.obstructions_found) && <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">{String(check.obstructions_found)}</p>}
-                  {Boolean(check.next_due_on) && <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Next due: {String(check.next_due_on)}</p>}
-                </div>
-                <Badge tone={check.outcome === "pass" ? "green" : check.obstruction_outstanding ? "red" : "amber"}>
-                  {OUTCOME_LABELS[String(check.outcome)] ?? String(check.outcome)}
-                </Badge>
-              </div>
-            </Card>
-          ))}
-          {checksQuery.data?.data.length === 0 && <p className="text-sm text-slate-500 dark:text-slate-400">No checks recorded yet.</p>}
-        </div>
-
-        {canWrite && Boolean(route.in_service) && (
-          <div className="mt-3">
-            {addingCheck ? (
-              <ChildRecordForm
-                path={CHECKS_PATH}
-                fields={ESCAPE_ROUTE_CHECK_FIELDS}
-                parentKey="escape_route_id"
-                parentId={routeId}
-                onDone={() => {
-                  setAddingCheck(false);
-                  invalidate();
-                }}
-                onCancel={() => setAddingCheck(false)}
-              />
-            ) : (
-              <Button size="sm" onClick={() => setAddingCheck(true)}>
-                + Record a check
-              </Button>
-            )}
+      <CheckHistoryList
+        checks={checksQuery.data?.data}
+        renderCheck={(check) => (
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-medium text-slate-800 dark:text-slate-200">{String(check.performed_on)}</p>
+              {Boolean(check.obstructions_found) && (
+                <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">{String(check.obstructions_found)}</p>
+              )}
+              {Boolean(check.next_due_on) && (
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Next due: {String(check.next_due_on)}</p>
+              )}
+            </div>
+            <Badge tone={check.outcome === "pass" ? "green" : check.obstruction_outstanding ? "red" : "amber"}>
+              {OUTCOME_LABELS[String(check.outcome)] ?? String(check.outcome)}
+            </Badge>
           </div>
         )}
-      </div>
-    </div>
-  );
-}
-
-function Field({ label, value }: { label: string; value: unknown }) {
-  return (
-    <div>
-      <dt className="text-xs font-medium text-slate-500 dark:text-slate-400">{label}</dt>
-      <dd className="text-sm text-slate-800 dark:text-slate-200">{value ? String(value) : "—"}</dd>
-    </div>
-  );
-}
-
-function EditCard({
-  route,
-  onDone,
-  onCancel,
-}: {
-  route: Record<string, unknown>;
-  onDone: () => void;
-  onCancel: () => void;
-}) {
-  const [values, setValues] = useState<FormValues>(route);
-  const [error, setError] = useState<unknown>(null);
-
-  const mutation = useMutation({
-    mutationFn: () => {
-      const body: FormValues = {};
-      for (const field of ESCAPE_ROUTE_FIELDS) {
-        if (field.createOnly) continue;
-        if (values[field.key] !== route[field.key]) body[field.key] = values[field.key] ?? null;
-      }
-      return updateResource("/escape-routes", route.id as number, body);
-    },
-    onSuccess: onDone,
-    onError: setError,
-  });
-
-  const fieldErrors = error instanceof ApiError ? error.fieldErrors : {};
-
-  return (
-    <Card className="p-6">
-      {Boolean(error) && (
-        <div className="mb-4">
-          <ApiErrorAlert error={error} />
-        </div>
-      )}
-      <ResourceForm
-        fields={ESCAPE_ROUTE_FIELDS}
-        mode="update"
-        values={values}
-        onChange={(key, value) => setValues((prev) => ({ ...prev, [key]: value }))}
-        fieldErrors={fieldErrors}
+        path={CHECKS_PATH}
+        fields={ESCAPE_ROUTE_CHECK_FIELDS}
+        parentKey="escape_route_id"
+        parentId={routeId}
+        canAdd={canWrite && Boolean(route.in_service)}
+        onAdded={invalidate}
       />
-      <div className="mt-4 flex justify-end gap-2 border-t border-slate-100 dark:border-slate-800 pt-4">
-        <Button variant="secondary" onClick={onCancel}>
-          Cancel
-        </Button>
-        <Button variant="primary" loading={mutation.isPending} onClick={() => mutation.mutate()}>
-          Save changes
-        </Button>
-      </div>
-    </Card>
-  );
-}
-
-function DeleteButton({ routeId, onDone }: { routeId: number; onDone: () => void }) {
-  const [error, setError] = useState<unknown>(null);
-  const mutation = useMutation({
-    mutationFn: () => removeResource("/escape-routes", routeId),
-    onSuccess: onDone,
-    onError: setError,
-  });
-  return (
-    <div>
-      {Boolean(error) && <ApiErrorAlert error={error} />}
-      <Button
-        variant="danger"
-        loading={mutation.isPending}
-        onClick={() => {
-          if (confirm("Delete this escape route? Refused if it has a check history.")) mutation.mutate();
-        }}
-      >
-        Delete
-      </Button>
     </div>
   );
 }

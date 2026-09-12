@@ -1,9 +1,6 @@
-import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { listResource } from "../../lib/api";
-import { useAuth } from "../../lib/AuthContext";
-import { usePremises } from "../../lib/PremisesContext";
-import { atLeast } from "../../lib/roles";
+import { usePremisesScopedList } from "../../lib/usePremisesScopedList";
 import { EQUIPMENT_COLUMNS, EQUIPMENT_TYPES } from "../../resources/equipment";
 import { Button } from "../../components/ui/Button";
 import { ApiErrorAlert, PageHeader } from "../../components/ui/primitives";
@@ -11,12 +8,7 @@ import { ResourceTable } from "../../components/resource/ResourceTable";
 import { Select } from "../../components/ui/form";
 
 export default function EquipmentListPage() {
-  const [searchParams, setSearchParams] = useSearchParams();
-  const navigate = useNavigate();
-  const { user } = useAuth();
-  const { selectedId } = usePremises();
-
-  const premisesId = searchParams.get("premises_id") ?? (selectedId !== null ? String(selectedId) : undefined);
+  const { searchParams, premisesId, updateParam, canCreate, navigate } = usePremisesScopedList("assessor");
   const equipmentType = searchParams.get("equipment_type") ?? undefined;
 
   const { data, isLoading, error } = useQuery({
@@ -24,15 +16,6 @@ export default function EquipmentListPage() {
     queryFn: () =>
       listResource("/equipment", { limit: 100, sort: "location", premises_id: premisesId, equipment_type: equipmentType }),
   });
-
-  function updateParam(key: string, value: string | undefined) {
-    const next = new URLSearchParams(searchParams);
-    if (!value) next.delete(key);
-    else next.set(key, value);
-    setSearchParams(next);
-  }
-
-  const canCreate = user !== null && atLeast(user.role, "assessor");
 
   return (
     <div>

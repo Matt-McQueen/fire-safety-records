@@ -20,6 +20,8 @@ import { Button } from "../../components/ui/Button";
 import { ResourceForm } from "../../components/resource/ResourceForm";
 import type { FormValues } from "../../components/resource/ResourceForm";
 import { ChildRecordForm } from "../../components/resource/ChildRecordForm";
+import { AddChildRecordToggle } from "../../components/resource/AddChildRecordToggle";
+import { EditDeleteButtons } from "../../components/resource/EditDeleteButtons";
 import NotFoundPage from "../NotFoundPage";
 
 const FINDINGS_PATH = "/fra-significant-findings";
@@ -363,8 +365,6 @@ function FindingsList({
   canEditMeasures: boolean;
   onChange: () => void;
 }) {
-  const [adding, setAdding] = useState(false);
-
   return (
     <div className="space-y-3">
       {findings.map((finding) => (
@@ -381,23 +381,14 @@ function FindingsList({
 
       {canEditFindings && (
         <div>
-          {adding ? (
-            <ChildRecordForm
-              path={FINDINGS_PATH}
-              fields={FINDING_FIELDS}
-              parentKey="fire_risk_assessment_id"
-              parentId={assessmentId}
-              onDone={() => {
-                setAdding(false);
-                onChange();
-              }}
-              onCancel={() => setAdding(false)}
-            />
-          ) : (
-            <Button size="sm" onClick={() => setAdding(true)}>
-              + Add finding
-            </Button>
-          )}
+          <AddChildRecordToggle
+            label="+ Add finding"
+            path={FINDINGS_PATH}
+            fields={FINDING_FIELDS}
+            parentKey="fire_risk_assessment_id"
+            parentId={assessmentId}
+            onAdded={onChange}
+          />
         </div>
       )}
     </div>
@@ -416,7 +407,6 @@ function FindingCard({
   onChange: () => void;
 }) {
   const [editing, setEditing] = useState(false);
-  const [addingMeasure, setAddingMeasure] = useState(false);
   const [error, setError] = useState<unknown>(null);
 
   const removeMutation = useMutation({
@@ -456,21 +446,12 @@ function FindingCard({
             {finding.fuel_source ? <span>Fuel: {String(finding.fuel_source)}</span> : null}
           </div>
           {canEdit && (
-            <div className="mt-2 flex gap-2">
-              <Button size="sm" variant="ghost" onClick={() => setEditing(true)}>
-                Edit
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                loading={removeMutation.isPending}
-                onClick={() => {
-                  if (confirm("Delete this finding?")) removeMutation.mutate();
-                }}
-              >
-                Delete
-              </Button>
-            </div>
+            <EditDeleteButtons
+              onEdit={() => setEditing(true)}
+              onDelete={() => removeMutation.mutate()}
+              deleting={removeMutation.isPending}
+              confirmMessage="Delete this finding?"
+            />
           )}
         </>
       )}
@@ -480,24 +461,17 @@ function FindingCard({
           <MeasureRow key={String(measure.id)} measure={measure} canEdit={canEditMeasures} onChange={onChange} />
         ))}
         {finding.measures.length === 0 && <p className="text-xs text-slate-400 dark:text-slate-500">No measures recorded.</p>}
-        {canEditMeasures &&
-          (addingMeasure ? (
-            <ChildRecordForm
-              path={MEASURES_PATH}
-              fields={MEASURE_FIELDS}
-              parentKey="finding_id"
-              parentId={finding.id as number}
-              onDone={() => {
-                setAddingMeasure(false);
-                onChange();
-              }}
-              onCancel={() => setAddingMeasure(false)}
-            />
-          ) : (
-            <Button size="sm" variant="ghost" onClick={() => setAddingMeasure(true)}>
-              + Add measure
-            </Button>
-          ))}
+        {canEditMeasures && (
+          <AddChildRecordToggle
+            label="+ Add measure"
+            path={MEASURES_PATH}
+            fields={MEASURE_FIELDS}
+            parentKey="finding_id"
+            parentId={finding.id as number}
+            variant="ghost"
+            onAdded={onChange}
+          />
+        )}
       </div>
     </Card>
   );
@@ -550,21 +524,13 @@ function MeasureRow({ measure, canEdit, onChange }: { measure: Row; canEdit: boo
         {measure.completed_on ? <span>Completed: {String(measure.completed_on)}</span> : null}
       </div>
       {canEdit && (
-        <div className="mt-1 flex gap-2">
-          <Button size="sm" variant="ghost" onClick={() => setEditing(true)}>
-            Edit
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            loading={removeMutation.isPending}
-            onClick={() => {
-              if (confirm("Delete this measure?")) removeMutation.mutate();
-            }}
-          >
-            Delete
-          </Button>
-        </div>
+        <EditDeleteButtons
+          onEdit={() => setEditing(true)}
+          onDelete={() => removeMutation.mutate()}
+          deleting={removeMutation.isPending}
+          confirmMessage="Delete this measure?"
+          className="mt-1 flex gap-2"
+        />
       )}
     </div>
   );
@@ -583,8 +549,6 @@ function PersonsAtRiskList({
   canEdit: boolean;
   onChange: () => void;
 }) {
-  const [adding, setAdding] = useState(false);
-
   return (
     <div className="space-y-2">
       {persons.map((person) => (
@@ -593,23 +557,14 @@ function PersonsAtRiskList({
       {persons.length === 0 && <p className="text-sm text-slate-500 dark:text-slate-400">No persons at particular risk recorded.</p>}
       {canEdit && (
         <div>
-          {adding ? (
-            <ChildRecordForm
-              path={PERSONS_AT_RISK_PATH}
-              fields={PERSON_AT_RISK_FIELDS}
-              parentKey="fire_risk_assessment_id"
-              parentId={assessmentId}
-              onDone={() => {
-                setAdding(false);
-                onChange();
-              }}
-              onCancel={() => setAdding(false)}
-            />
-          ) : (
-            <Button size="sm" onClick={() => setAdding(true)}>
-              + Add person or group
-            </Button>
-          )}
+          <AddChildRecordToggle
+            label="+ Add person or group"
+            path={PERSONS_AT_RISK_PATH}
+            fields={PERSON_AT_RISK_FIELDS}
+            parentKey="fire_risk_assessment_id"
+            parentId={assessmentId}
+            onAdded={onChange}
+          />
         </div>
       )}
     </div>
@@ -658,21 +613,12 @@ function PersonAtRiskRow({ person, canEdit, onChange }: { person: Row; canEdit: 
         {person.peep_in_place ? <Badge tone="blue">PEEP in place</Badge> : null}
       </div>
       {canEdit && (
-        <div className="mt-2 flex gap-2">
-          <Button size="sm" variant="ghost" onClick={() => setEditing(true)}>
-            Edit
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            loading={removeMutation.isPending}
-            onClick={() => {
-              if (confirm("Delete this entry?")) removeMutation.mutate();
-            }}
-          >
-            Delete
-          </Button>
-        </div>
+        <EditDeleteButtons
+          onEdit={() => setEditing(true)}
+          onDelete={() => removeMutation.mutate()}
+          deleting={removeMutation.isPending}
+          confirmMessage="Delete this entry?"
+        />
       )}
     </Card>
   );

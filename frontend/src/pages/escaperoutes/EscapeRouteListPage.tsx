@@ -1,28 +1,18 @@
-import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { listResource } from "../../lib/api";
-import { useAuth } from "../../lib/AuthContext";
-import { usePremises } from "../../lib/PremisesContext";
-import { atLeast } from "../../lib/roles";
+import { usePremisesScopedList } from "../../lib/usePremisesScopedList";
 import { ESCAPE_ROUTE_COLUMNS } from "../../resources/equipment";
 import { Button } from "../../components/ui/Button";
 import { ApiErrorAlert, PageHeader } from "../../components/ui/primitives";
 import { ResourceTable } from "../../components/resource/ResourceTable";
 
 export default function EscapeRouteListPage() {
-  const [searchParams] = useSearchParams();
-  const navigate = useNavigate();
-  const { user } = useAuth();
-  const { selectedId } = usePremises();
-
-  const premisesId = searchParams.get("premises_id") ?? (selectedId !== null ? String(selectedId) : undefined);
+  const { premisesId, canCreate, navigate } = usePremisesScopedList("manager");
 
   const { data, isLoading, error } = useQuery({
     queryKey: ["resource-list", "escape_routes", premisesId],
     queryFn: () => listResource("/escape-routes", { limit: 100, sort: "name", premises_id: premisesId }),
   });
-
-  const canCreate = user !== null && atLeast(user.role, "manager");
 
   return (
     <div>
