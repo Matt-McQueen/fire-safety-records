@@ -6,7 +6,7 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import type { ReactNode } from "react";
 
-export type Theme = "light" | "dark";
+type Theme = "light" | "dark";
 
 const STORAGE_KEY = "fsr:theme";
 

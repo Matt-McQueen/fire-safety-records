@@ -1,3 +1,8 @@
+// fallow-ignore-file unused-file
+// Cloudflare Pages routes to this by filesystem convention ([[path]].js
+// under functions/), which no import in this repo reflects - hence the
+// suppression above.
+//
 // Proxies /api/* from the Pages origin through to the API on Render.
 //
 // The point of this is the refresh cookie. It is set SameSite=Strict, so the
