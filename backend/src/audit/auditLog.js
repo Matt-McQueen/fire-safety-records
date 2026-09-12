@@ -36,16 +36,16 @@ export async function record(
   client,
 ) {
   const params = [
-    user?.id ?? null,
-    user?.email ?? null,
+    field(user, "id"),
+    field(user, "email"),
     action,
-    resource ?? null,
-    resourceId === undefined || resourceId === null ? null : String(resourceId),
-    premisesId ?? null,
+    orNull(resource),
+    idParam(resourceId),
+    orNull(premisesId),
     outcome,
-    request?.id ?? null,
-    request?.ip ?? null,
-    detail === undefined ? null : JSON.stringify(redact(detail)),
+    field(request, "id"),
+    field(request, "ip"),
+    detailParam(detail),
   ];
 
   try {
@@ -53,6 +53,24 @@ export async function record(
   } catch (error) {
     console.error("Failed to write audit entry", { action, resource, error: error.message });
   }
+}
+
+// The pieces of one audit_log row: null in place of anything absent, so
+// `record` itself never has to think about which fields need a default.
+function orNull(value) {
+  return value ?? null;
+}
+
+function field(obj, key) {
+  return obj?.[key] ?? null;
+}
+
+function idParam(value) {
+  return value === undefined || value === null ? null : String(value);
+}
+
+function detailParam(detail) {
+  return detail === undefined ? null : JSON.stringify(redact(detail));
 }
 
 // The fields a change actually altered, so the trail says what moved rather
