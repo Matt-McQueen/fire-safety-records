@@ -1,9 +1,9 @@
 import { useNavigate, useParams } from "react-router-dom";
 import { findResourceConfig } from "../../resources/configs";
 import { ApiError } from "../../lib/http";
-import { Button } from "../../components/ui/Button";
 import { ApiErrorAlert, Card, CenteredSpinner, PageHeader } from "../../components/ui/primitives";
 import { ResourceForm } from "../../components/resource/ResourceForm";
+import { ResourceFormFooter } from "../../components/resource/ResourceFormFooter";
 import NotFoundPage from "../NotFoundPage";
 import { useResourceForm } from "./useResourceForm";
 
@@ -46,33 +46,17 @@ export default function ResourceFormPage() {
           />
         </fieldset>
 
-        <div className="mt-6 flex items-center justify-between border-t border-slate-100 dark:border-slate-800 pt-4">
-          <div>
-            {!isNew && canRemove && (
-              <Button
-                variant="danger"
-                loading={removeMutation.isPending}
-                onClick={() => {
-                  if (confirm(`Delete this ${config.label.toLowerCase()}? This cannot be undone.`)) {
-                    removeMutation.mutate();
-                  }
-                }}
-              >
-                Delete
-              </Button>
-            )}
-          </div>
-          <div className="flex gap-2">
-            <Button variant="secondary" onClick={() => navigate(`/records/${config.name}`)}>
-              Cancel
-            </Button>
-            {canWrite && (
-              <Button variant="primary" loading={saveMutation.isPending} onClick={() => saveMutation.mutate()}>
-                {isNew ? "Create" : "Save changes"}
-              </Button>
-            )}
-          </div>
-        </div>
+        <ResourceFormFooter
+          isNew={isNew}
+          canWrite={canWrite}
+          canRemove={canRemove}
+          deleting={removeMutation.isPending}
+          onDelete={() => removeMutation.mutate()}
+          deleteConfirmMessage={`Delete this ${config.label.toLowerCase()}? This cannot be undone.`}
+          saving={saveMutation.isPending}
+          onSave={() => saveMutation.mutate()}
+          onCancel={() => navigate(`/records/${config.name}`)}
+        />
       </Card>
     </div>
   );

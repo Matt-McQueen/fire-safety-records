@@ -1,9 +1,9 @@
 import { useNavigate, useParams } from "react-router-dom";
 import { ApiError } from "../../lib/http";
 import { PREMISES_FIELDS } from "../../resources/premises";
-import { Button } from "../../components/ui/Button";
 import { ApiErrorAlert, Card, CenteredSpinner, PageHeader } from "../../components/ui/primitives";
 import { ResourceForm } from "../../components/resource/ResourceForm";
+import { ResourceFormFooter } from "../../components/resource/ResourceFormFooter";
 import NotFoundPage from "../NotFoundPage";
 import { usePremisesForm } from "./usePremisesForm";
 
@@ -47,33 +47,17 @@ export default function PremisesFormPage() {
           />
         </fieldset>
 
-        <div className="mt-6 flex items-center justify-between border-t border-slate-100 dark:border-slate-800 pt-4">
-          <div>
-            {!isNew && canRemove && (
-              <Button
-                variant="danger"
-                loading={removeMutation.isPending}
-                onClick={() => {
-                  if (confirm("Delete this premises? This is refused while it still holds any records.")) {
-                    removeMutation.mutate();
-                  }
-                }}
-              >
-                Delete
-              </Button>
-            )}
-          </div>
-          <div className="flex gap-2">
-            <Button variant="secondary" onClick={() => navigate(isNew ? "/premises" : `/premises/${id}`)}>
-              Cancel
-            </Button>
-            {canWrite && (
-              <Button variant="primary" loading={saveMutation.isPending} onClick={() => saveMutation.mutate()}>
-                {isNew ? "Create" : "Save changes"}
-              </Button>
-            )}
-          </div>
-        </div>
+        <ResourceFormFooter
+          isNew={isNew}
+          canWrite={canWrite}
+          canRemove={canRemove}
+          deleting={removeMutation.isPending}
+          onDelete={() => removeMutation.mutate()}
+          deleteConfirmMessage="Delete this premises? This is refused while it still holds any records."
+          saving={saveMutation.isPending}
+          onSave={() => saveMutation.mutate()}
+          onCancel={() => navigate(isNew ? "/premises" : `/premises/${id}`)}
+        />
       </Card>
     </div>
   );
