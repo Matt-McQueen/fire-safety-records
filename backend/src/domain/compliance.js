@@ -56,193 +56,20 @@ export async function complianceForPremises(premisesId, user) {
     documentVersions(premisesId),
   ]);
 
-  const checks = [];
-
-  // --- the assessment itself (SSI 2006/456 regs 3, 8, 9) -------------------
-
-  if (!assessment) {
-    checks.push({
-      key: "fire_risk_assessment",
-      provision: "Fire (Scotland) Act 2005 s.53; SSI 2006/456 regs 3, 8",
-      status: "missing",
-      summary: mustRecord
-        ? "No current fire risk assessment is recorded, and this premises is under a duty to record one."
-        : "No current fire risk assessment is recorded. The duty to carry one out applies whether or not it must be recorded.",
-    });
-  } else {
-    checks.push({
-      key: "fire_risk_assessment",
-      provision: "SSI 2006/456 regs 3, 8, 9",
-      status: assessment.review_overdue ? "attention" : "ok",
-      summary: assessment.review_overdue
-        ? `The current assessment was due for review on ${asDate(assessment.next_review_due)}.`
-        : `Assessment ${assessment.reference ?? assessment.id} is current, next review ${asDate(assessment.next_review_due) ?? "not set"}.`,
-      detail: {
-        id: assessment.id,
-        carried_out_on: asDate(assessment.carried_out_on),
-        recorded_on: asDate(assessment.recorded_on),
-        next_review_due: asDate(assessment.next_review_due),
-        significant_findings: Number(assessment.finding_count),
-      },
-    });
-
-    // Reg 9(1)(a) requires the record to include the significant findings.
-    if (mustRecord && !assessment.recorded_on) {
-      checks.push({
-        key: "assessment_recorded",
-        provision: "SSI 2006/456 reg 8",
-        status: "missing",
-        summary:
-          "The duty to record applies to this premises, but the current assessment has no recorded_on date.",
-      });
-    }
-  }
-
-  checks.push({
-    key: "recording_duty",
-    provision: "SSI 2006/456 regs 8, 9, 10(2)",
-    status: "ok",
-    summary: mustRecord
-      ? `The duty to record applies: ${triggerText(premises)}.`
-      : "The duty to record does not apply. The underlying duties still do; only the recording is conditional.",
-    detail: {
-      applies: mustRecord,
-      five_or_more_employees: premises.trigger_five_or_more_employees,
-      licensed_premises: premises.trigger_licensed_premises,
-      alterations_notice_in_force: premises.trigger_alterations_notice,
-    },
-  });
-
-  // --- measures arising from the assessment --------------------------------
-
-  checks.push({
-    key: "outstanding_measures",
-    provision: "SSI 2006/456 reg 9(1)(a)",
-    status: outstandingMeasures.overdue > 0 ? "attention" : "ok",
-    summary:
-      outstandingMeasures.overdue > 0
-        ? `${outstandingMeasures.overdue} planned measure(s) are past their target date.`
-        : `${outstandingMeasures.planned} planned measure(s), none overdue.`,
-    detail: outstandingMeasures,
-  });
-
-  // --- arrangements (reg 10) ------------------------------------------------
-
-  checks.push({
-    key: "fire_safety_arrangements",
-    provision: "SSI 2006/456 reg 10",
-    status: arrangementGaps.length === 0 ? "ok" : mustRecord ? "missing" : "attention",
-    summary:
-      arrangementGaps.length === 0
-        ? "Every Schedule 2 measure has a current recorded arrangement."
-        : `${arrangementGaps.length} Schedule 2 measure(s) have no current arrangement recorded.`,
-    detail: { missing: arrangementGaps },
-  });
-
-  // --- maintenance (regs 12, 13) -------------------------------------------
-
-  checks.push({
-    key: "equipment_checks",
-    provision: "SSI 2006/456 reg 12",
-    status:
-      equipmentState.overdue > 0 || equipmentState.unresolved_defects > 0
-        ? "attention"
-        : "ok",
-    summary:
-      equipmentState.overdue > 0 || equipmentState.unresolved_defects > 0
-        ? `${equipmentState.overdue} item(s) overdue a check and ${equipmentState.unresolved_defects} with an unresolved defect.`
-        : `${equipmentState.in_service} item(s) in service, all checks up to date.`,
-    detail: equipmentState,
-  });
-
-  checks.push({
-    key: "escape_routes",
-    provision: "SSI 2006/456 reg 13",
-    status: routeState.overdue > 0 || routeState.unresolved > 0 ? "attention" : "ok",
-    summary:
-      routeState.overdue > 0 || routeState.unresolved > 0
-        ? `${routeState.overdue} route(s) overdue a check and ${routeState.unresolved} with an unresolved obstruction.`
-        : `${routeState.in_service} route(s) in service, all checks up to date.`,
-    detail: routeState,
-  });
-
-  // --- procedures, drills, training, information ---------------------------
-
-  checks.push({
-    key: "emergency_procedures",
-    provision: "SSI 2006/456 reg 14",
-    status: documents.procedures > 0 ? "ok" : "missing",
-    summary:
-      documents.procedures > 0
-        ? `${documents.procedures} current emergency procedure(s) recorded.`
-        : "No current emergency procedure is recorded.",
-  });
-
-  checks.push({
-    key: "fire_drills",
-    provision: "SSI 2006/456 reg 14; interval from Scottish Government guidance",
-    status: drillState.status,
-    summary: drillState.summary,
-    detail: drillState.detail,
-  });
-
-  checks.push({
-    key: "training",
-    provision: "SSI 2006/456 reg 20",
-    status: trainingState.overdue > 0 ? "attention" : trainingState.total > 0 ? "ok" : "missing",
-    summary:
-      trainingState.total === 0
-        ? "No training is recorded for this premises."
-        : trainingState.overdue > 0
-          ? `${trainingState.overdue} training record(s) are past their refresher date.`
-          : `${trainingState.people_trained} person(s) trained, no refreshers overdue.`,
-    detail: trainingState,
-  });
-
-  // --- the written policy (HSWA 1974 s.2(3)) -------------------------------
-
-  checks.push({
-    key: "health_safety_policy",
-    provision: "Health and Safety at Work etc. Act 1974 s.2(3)",
-    status:
-      employees < 5 ? "not_required" : documents.policies > 0 ? "ok" : "missing",
-    summary:
-      employees < 5
-        ? `Fewer than five employees are recorded (${employees}), so the written policy duty does not apply.`
-        : documents.policies > 0
-          ? "A current written policy is recorded."
-          : `${employees} employees are recorded, so a written policy is required and none is current.`,
-  });
-
-  // --- incidents and enforcement -------------------------------------------
-
-  checks.push({
-    key: "riddor_reports",
-    provision: "RIDDOR 2013 regs 6, 12",
-    status: incidentState.report_overdue > 0
-      ? "attention"
-      : incidentState.report_outstanding > 0
-        ? "attention"
-        : "ok",
-    summary:
-      incidentState.report_outstanding === 0
-        ? `${incidentState.reportable} reportable incident(s) recorded, all reported.`
-        : `${incidentState.report_outstanding} reportable incident(s) have no report date, ${incidentState.report_overdue} of them past the ten-day deadline.`,
-    detail: incidentState,
-  });
-
-  checks.push({
-    key: "enforcement_notices",
-    provision: "Fire (Scotland) Act 2005 ss.62-65",
-    status: noticeState.outstanding > 0 ? "attention" : "ok",
-    summary:
-      noticeState.outstanding > 0
-        ? `${noticeState.outstanding} notice(s) in force with no compliance date recorded.`
-        : noticeState.in_force > 0
-          ? `${noticeState.in_force} notice(s) in force, all with compliance recorded.`
-          : "No enforcement notice is in force.",
-    detail: noticeState,
-  });
+  const checks = [
+    ...fireRiskAssessmentChecks(assessment, mustRecord),
+    recordingDutyCheck(premises, mustRecord),
+    outstandingMeasuresCheck(outstandingMeasures),
+    arrangementsCheck(arrangementGaps, mustRecord),
+    equipmentCheck(equipmentState),
+    escapeRoutesCheck(routeState),
+    emergencyProceduresCheck(documents),
+    fireDrillsCheck(drillState),
+    trainingCheck(trainingState),
+    healthSafetyPolicyCheck(employees, documents),
+    riddorReportsCheck(incidentState),
+    enforcementNoticesCheck(noticeState),
+  ];
 
   const counts = { ok: 0, attention: 0, missing: 0, not_required: 0 };
   for (const check of checks) counts[check.status] += 1;
@@ -257,6 +84,214 @@ export async function complianceForPremises(premisesId, user) {
     // records is not the same as complying with the duties.
     caveat:
       "This reports whether the records the legislation expects are present and current. Whether the assessment is suitable and sufficient, and whether the fire safety measures are adequate, is a judgement for a competent person.",
+  };
+}
+
+// --- the individual checks --------------------------------------------------
+
+// --- the assessment itself (SSI 2006/456 regs 3, 8, 9) ----------------------
+function fireRiskAssessmentChecks(assessment, mustRecord) {
+  if (!assessment) {
+    return [
+      {
+        key: "fire_risk_assessment",
+        provision: "Fire (Scotland) Act 2005 s.53; SSI 2006/456 regs 3, 8",
+        status: "missing",
+        summary: mustRecord
+          ? "No current fire risk assessment is recorded, and this premises is under a duty to record one."
+          : "No current fire risk assessment is recorded. The duty to carry one out applies whether or not it must be recorded.",
+      },
+    ];
+  }
+
+  const checks = [
+    {
+      key: "fire_risk_assessment",
+      provision: "SSI 2006/456 regs 3, 8, 9",
+      status: assessment.review_overdue ? "attention" : "ok",
+      summary: assessment.review_overdue
+        ? `The current assessment was due for review on ${asDate(assessment.next_review_due)}.`
+        : `Assessment ${assessment.reference ?? assessment.id} is current, next review ${asDate(assessment.next_review_due) ?? "not set"}.`,
+      detail: {
+        id: assessment.id,
+        carried_out_on: asDate(assessment.carried_out_on),
+        recorded_on: asDate(assessment.recorded_on),
+        next_review_due: asDate(assessment.next_review_due),
+        significant_findings: Number(assessment.finding_count),
+      },
+    },
+  ];
+
+  // Reg 9(1)(a) requires the record to include the significant findings.
+  if (mustRecord && !assessment.recorded_on) {
+    checks.push({
+      key: "assessment_recorded",
+      provision: "SSI 2006/456 reg 8",
+      status: "missing",
+      summary:
+        "The duty to record applies to this premises, but the current assessment has no recorded_on date.",
+    });
+  }
+
+  return checks;
+}
+
+function recordingDutyCheck(premises, mustRecord) {
+  return {
+    key: "recording_duty",
+    provision: "SSI 2006/456 regs 8, 9, 10(2)",
+    status: "ok",
+    summary: mustRecord
+      ? `The duty to record applies: ${triggerText(premises)}.`
+      : "The duty to record does not apply. The underlying duties still do; only the recording is conditional.",
+    detail: {
+      applies: mustRecord,
+      five_or_more_employees: premises.trigger_five_or_more_employees,
+      licensed_premises: premises.trigger_licensed_premises,
+      alterations_notice_in_force: premises.trigger_alterations_notice,
+    },
+  };
+}
+
+// --- measures arising from the assessment -----------------------------------
+function outstandingMeasuresCheck(outstandingMeasures) {
+  return {
+    key: "outstanding_measures",
+    provision: "SSI 2006/456 reg 9(1)(a)",
+    status: outstandingMeasures.overdue > 0 ? "attention" : "ok",
+    summary:
+      outstandingMeasures.overdue > 0
+        ? `${outstandingMeasures.overdue} planned measure(s) are past their target date.`
+        : `${outstandingMeasures.planned} planned measure(s), none overdue.`,
+    detail: outstandingMeasures,
+  };
+}
+
+// --- arrangements (reg 10) ---------------------------------------------------
+function arrangementsCheck(arrangementGaps, mustRecord) {
+  return {
+    key: "fire_safety_arrangements",
+    provision: "SSI 2006/456 reg 10",
+    status: arrangementGaps.length === 0 ? "ok" : mustRecord ? "missing" : "attention",
+    summary:
+      arrangementGaps.length === 0
+        ? "Every Schedule 2 measure has a current recorded arrangement."
+        : `${arrangementGaps.length} Schedule 2 measure(s) have no current arrangement recorded.`,
+    detail: { missing: arrangementGaps },
+  };
+}
+
+// --- maintenance (regs 12, 13) ----------------------------------------------
+function equipmentCheck(equipmentState) {
+  return {
+    key: "equipment_checks",
+    provision: "SSI 2006/456 reg 12",
+    status: equipmentState.overdue > 0 || equipmentState.unresolved_defects > 0 ? "attention" : "ok",
+    summary:
+      equipmentState.overdue > 0 || equipmentState.unresolved_defects > 0
+        ? `${equipmentState.overdue} item(s) overdue a check and ${equipmentState.unresolved_defects} with an unresolved defect.`
+        : `${equipmentState.in_service} item(s) in service, all checks up to date.`,
+    detail: equipmentState,
+  };
+}
+
+function escapeRoutesCheck(routeState) {
+  return {
+    key: "escape_routes",
+    provision: "SSI 2006/456 reg 13",
+    status: routeState.overdue > 0 || routeState.unresolved > 0 ? "attention" : "ok",
+    summary:
+      routeState.overdue > 0 || routeState.unresolved > 0
+        ? `${routeState.overdue} route(s) overdue a check and ${routeState.unresolved} with an unresolved obstruction.`
+        : `${routeState.in_service} route(s) in service, all checks up to date.`,
+    detail: routeState,
+  };
+}
+
+// --- procedures, drills, training, information -------------------------------
+function emergencyProceduresCheck(documents) {
+  return {
+    key: "emergency_procedures",
+    provision: "SSI 2006/456 reg 14",
+    status: documents.procedures > 0 ? "ok" : "missing",
+    summary:
+      documents.procedures > 0
+        ? `${documents.procedures} current emergency procedure(s) recorded.`
+        : "No current emergency procedure is recorded.",
+  };
+}
+
+function fireDrillsCheck(drillState) {
+  return {
+    key: "fire_drills",
+    provision: "SSI 2006/456 reg 14; interval from Scottish Government guidance",
+    status: drillState.status,
+    summary: drillState.summary,
+    detail: drillState.detail,
+  };
+}
+
+function trainingCheck(trainingState) {
+  return {
+    key: "training",
+    provision: "SSI 2006/456 reg 20",
+    status: trainingState.overdue > 0 ? "attention" : trainingState.total > 0 ? "ok" : "missing",
+    summary:
+      trainingState.total === 0
+        ? "No training is recorded for this premises."
+        : trainingState.overdue > 0
+          ? `${trainingState.overdue} training record(s) are past their refresher date.`
+          : `${trainingState.people_trained} person(s) trained, no refreshers overdue.`,
+    detail: trainingState,
+  };
+}
+
+// --- the written policy (HSWA 1974 s.2(3)) ----------------------------------
+function healthSafetyPolicyCheck(employees, documents) {
+  return {
+    key: "health_safety_policy",
+    provision: "Health and Safety at Work etc. Act 1974 s.2(3)",
+    status: employees < 5 ? "not_required" : documents.policies > 0 ? "ok" : "missing",
+    summary:
+      employees < 5
+        ? `Fewer than five employees are recorded (${employees}), so the written policy duty does not apply.`
+        : documents.policies > 0
+          ? "A current written policy is recorded."
+          : `${employees} employees are recorded, so a written policy is required and none is current.`,
+  };
+}
+
+// --- incidents and enforcement ----------------------------------------------
+function riddorReportsCheck(incidentState) {
+  return {
+    key: "riddor_reports",
+    provision: "RIDDOR 2013 regs 6, 12",
+    status:
+      incidentState.report_overdue > 0
+        ? "attention"
+        : incidentState.report_outstanding > 0
+          ? "attention"
+          : "ok",
+    summary:
+      incidentState.report_outstanding === 0
+        ? `${incidentState.reportable} reportable incident(s) recorded, all reported.`
+        : `${incidentState.report_outstanding} reportable incident(s) have no report date, ${incidentState.report_overdue} of them past the ten-day deadline.`,
+    detail: incidentState,
+  };
+}
+
+function enforcementNoticesCheck(noticeState) {
+  return {
+    key: "enforcement_notices",
+    provision: "Fire (Scotland) Act 2005 ss.62-65",
+    status: noticeState.outstanding > 0 ? "attention" : "ok",
+    summary:
+      noticeState.outstanding > 0
+        ? `${noticeState.outstanding} notice(s) in force with no compliance date recorded.`
+        : noticeState.in_force > 0
+          ? `${noticeState.in_force} notice(s) in force, all with compliance recorded.`
+          : "No enforcement notice is in force.",
+    detail: noticeState,
   };
 }
 
