@@ -218,6 +218,76 @@ function assertAssessorNamed(body, before) {
   }
 }
 
+// Reg 9(1)(a): the significant findings of the assessment must be recorded.
+// An assessment recorded with none has not recorded them.
+async function assertFindingsRecorded(client, assessment, assessmentId) {
+  const findings = await countRows(
+    client,
+    "SELECT count(*) FROM fra_significant_findings WHERE fire_risk_assessment_id = $1",
+    [assessmentId],
+  );
+  if (findings === 0) {
+    throw ruleViolation(
+      "This premises is under a duty to record, so the assessment must record at least one significant finding before it can be published (SSI 2006/456 reg 9(1)(a)). Record that no significant risk was found if that is the conclusion.",
+    );
+  }
+  if (!present(assessment.assessor_competence)) {
+    throw ruleViolation(
+      "assessor_competence must record what the assessor's competence rests on before the assessment is recorded",
+    );
+  }
+}
+
+// Regs 6 and 7, and DSEAR: where dangerous substances are present the
+// assessment has to have considered them. If the premises holds any, an
+// assessment that says it does not cover them is not the assessment the
+// regulations require.
+async function assertDangerousSubstancesCovered(client, assessment, premisesId) {
+  const substances = await countRows(
+    client,
+    "SELECT count(*) FROM dangerous_substances WHERE premises_id = $1",
+    [premisesId],
+  );
+  if (substances > 0 && !assessment.covers_dangerous_substances) {
+    throw ruleViolation(
+      `This premises has ${substances} dangerous substance record(s), so the assessment must set covers_dangerous_substances (SSI 2006/456 regs 6-7).`,
+    );
+  }
+}
+
+// Reg 5 and the Management of Health and Safety at Work Regulations: young
+// persons get particular consideration. If the assessment itself lists one as
+// especially at risk, it plainly covers them, so the flag must say so.
+async function assertYoungPersonsCovered(client, assessment, assessmentId) {
+  const youngPersons = await countRows(
+    client,
+    `SELECT count(*) FROM fra_persons_at_risk
+      WHERE fire_risk_assessment_id = $1 AND category = 'young_person'`,
+    [assessmentId],
+  );
+  if (youngPersons > 0 && !assessment.covers_young_persons) {
+    throw ruleViolation(
+      "The assessment identifies a young person as especially at risk, so covers_young_persons must be set.",
+    );
+  }
+}
+
+// An assessment that follows another is a review or a revision, not an
+// initial assessment. Recording it as initial would misdescribe the history.
+function resolveAssessmentType(body, assessment, superseded) {
+  let assessmentType = body.assessment_type ?? assessment.assessment_type;
+  if (superseded && assessmentType === "initial") {
+    throw ruleViolation(
+      "This premises already has a recorded assessment, so this one is a review or a revision after a change, not an initial assessment. Set assessment_type accordingly.",
+      { supersedes_id: superseded.id },
+    );
+  }
+  if (!superseded && assessmentType !== "initial") {
+    assessmentType = "initial";
+  }
+  return assessmentType;
+}
+
 // The rules that decide whether a draft may become the recorded assessment.
 async function publishAssessment(assessmentId, body, { user, request }) {
   return withTransaction(async (client) => {
@@ -237,117 +307,69 @@ async function publishAssessment(assessmentId, body, { user, request }) {
     notInFuture(recordedOn, "recorded_on");
     notBefore(recordedOn, assessment.carried_out_on, "recorded_on", "carried_out_on");
 
-    // Reg 9(1)(a): the significant findings of the assessment must be
-    // recorded. An assessment recorded with none has not recorded them.
-    if (mustRecord) {
-      const findings = await countRows(
-        client,
-        "SELECT count(*) FROM fra_significant_findings WHERE fire_risk_assessment_id = $1",
-        [assessmentId],
-      );
-      if (findings === 0) {
-        throw ruleViolation(
-          "This premises is under a duty to record, so the assessment must record at least one significant finding before it can be published (SSI 2006/456 reg 9(1)(a)). Record that no significant risk was found if that is the conclusion.",
-        );
-      }
-      if (!present(assessment.assessor_competence)) {
-        throw ruleViolation(
-          "assessor_competence must record what the assessor's competence rests on before the assessment is recorded",
-        );
-      }
-    }
+    if (mustRecord) await assertFindingsRecorded(client, assessment, assessmentId);
+    await assertDangerousSubstancesCovered(client, assessment, premisesId);
+    await assertYoungPersonsCovered(client, assessment, assessmentId);
 
-    // Regs 6 and 7, and DSEAR: where dangerous substances are present the
-    // assessment has to have considered them. If the premises holds any, an
-    // assessment that says it does not cover them is not the assessment the
-    // regulations require.
-    const substances = await countRows(
-      client,
-      "SELECT count(*) FROM dangerous_substances WHERE premises_id = $1",
-      [premisesId],
-    );
-    if (substances > 0 && !assessment.covers_dangerous_substances) {
-      throw ruleViolation(
-        `This premises has ${substances} dangerous substance record(s), so the assessment must set covers_dangerous_substances (SSI 2006/456 regs 6-7).`,
-      );
-    }
-
-    // Reg 5 and the Management of Health and Safety at Work Regulations: young
-    // persons get particular consideration. If the assessment itself lists one
-    // as especially at risk, it plainly covers them, so the flag must say so.
-    const youngPersons = await countRows(
-      client,
-      `SELECT count(*) FROM fra_persons_at_risk
-        WHERE fire_risk_assessment_id = $1 AND category = 'young_person'`,
-      [assessmentId],
-    );
-    if (youngPersons > 0 && !assessment.covers_young_persons) {
-      throw ruleViolation(
-        "The assessment identifies a young person as especially at risk, so covers_young_persons must be set.",
-      );
-    }
-
-    // The one currently recorded assessment for these premises, if any.
-    const { rows: currentRows } = await client.query(
-      `SELECT id, assessment_type FROM fire_risk_assessments
-        WHERE premises_id = $1 AND status = 'current'
-        FOR UPDATE`,
-      [premisesId],
-    );
-    const superseded = currentRows[0] ?? null;
-
-    // An assessment that follows another is a review or a revision, not an
-    // initial assessment. Recording it as initial would misdescribe the
-    // history.
-    let assessmentType = body.assessment_type ?? assessment.assessment_type;
-    if (superseded && assessmentType === "initial") {
-      throw ruleViolation(
-        "This premises already has a recorded assessment, so this one is a review or a revision after a change, not an initial assessment. Set assessment_type accordingly.",
-        { supersedes_id: superseded.id },
-      );
-    }
-    if (!superseded && assessmentType !== "initial") {
-      assessmentType = "initial";
-    }
-
-    if (superseded) {
-      await client.query(
-        "UPDATE fire_risk_assessments SET status = 'superseded', updated_at = now() WHERE id = $1",
-        [superseded.id],
-      );
-    }
-
-    const { rows } = await client.query(
-      `UPDATE fire_risk_assessments
-          SET status = 'current',
-              assessment_type = $2,
-              recorded_on = $3,
-              supersedes_id = $4,
-              updated_at = now()
-        WHERE id = $1
-      RETURNING *`,
-      [assessmentId, assessmentType, mustRecord ? recordedOn : (body.recorded_on ?? null), superseded?.id ?? null],
-    );
-
-    await audit.record(
-      {
-        user,
-        action: "fire_risk_assessments.publish",
-        resource: "fire_risk_assessments",
-        resourceId: assessmentId,
-        premisesId,
-        request,
-        detail: {
-          supersedes_id: superseded?.id ?? null,
-          assessment_type: assessmentType,
-          recording_duty_applies: mustRecord,
-        },
-      },
-      client,
-    );
-
-    return { ...rows[0], superseded_id: superseded?.id ?? null, recording_duty_applies: mustRecord };
+    return recordAsCurrent(client, { assessmentId, body, assessment, premisesId, mustRecord, recordedOn, user, request });
   });
+}
+
+// Finds the assessment currently recorded for this premises (if any) and
+// marks it superseded, so the new one can point back to it.
+async function supersedeCurrentAssessment(client, premisesId) {
+  const { rows: currentRows } = await client.query(
+    `SELECT id, assessment_type FROM fire_risk_assessments
+      WHERE premises_id = $1 AND status = 'current'
+      FOR UPDATE`,
+    [premisesId],
+  );
+  const superseded = currentRows[0] ?? null;
+  if (superseded) {
+    await client.query(
+      "UPDATE fire_risk_assessments SET status = 'superseded', updated_at = now() WHERE id = $1",
+      [superseded.id],
+    );
+  }
+  return superseded;
+}
+
+// Writes this assessment as the new current assessment (having already
+// superseded the last one) and audits the whole publication.
+async function recordAsCurrent(client, { assessmentId, body, assessment, premisesId, mustRecord, recordedOn, user, request }) {
+  const superseded = await supersedeCurrentAssessment(client, premisesId);
+  const assessmentType = resolveAssessmentType(body, assessment, superseded);
+
+  const { rows } = await client.query(
+    `UPDATE fire_risk_assessments
+        SET status = 'current',
+            assessment_type = $2,
+            recorded_on = $3,
+            supersedes_id = $4,
+            updated_at = now()
+      WHERE id = $1
+    RETURNING *`,
+    [assessmentId, assessmentType, mustRecord ? recordedOn : (body.recorded_on ?? null), superseded?.id ?? null],
+  );
+
+  await audit.record(
+    {
+      user,
+      action: "fire_risk_assessments.publish",
+      resource: "fire_risk_assessments",
+      resourceId: assessmentId,
+      premisesId,
+      request,
+      detail: {
+        supersedes_id: superseded?.id ?? null,
+        assessment_type: assessmentType,
+        recording_duty_applies: mustRecord,
+      },
+    },
+    client,
+  );
+
+  return { ...rows[0], superseded_id: superseded?.id ?? null, recording_duty_applies: mustRecord };
 }
 
 async function fullAssessment(assessmentId, user) {
@@ -564,6 +586,7 @@ async function assertAssessmentNotSuperseded(client, findingId) {
   }
 }
 
+// fallow-ignore-next-line complexity
 function assertMeasureCoherent(body, before) {
   const status = resulting(body, before, "status");
   const completedOn = resulting(body, before, "completed_on");

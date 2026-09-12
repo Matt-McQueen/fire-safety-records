@@ -1,5 +1,6 @@
 import { useNavigate, useParams } from "react-router-dom";
 import { findResourceConfig } from "../../resources/configs";
+import type { ResourceConfig } from "../../resources/types";
 import { useAuth } from "../../lib/AuthContext";
 import { atLeast } from "../../lib/roles";
 import { Button } from "../../components/ui/Button";
@@ -38,50 +39,7 @@ export default function ResourceListPage() {
         }
       />
 
-      <div className="mb-4 flex flex-wrap items-end gap-3">
-        {config.searchable && (
-          <div className="w-56">
-            <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">Search</label>
-            <TextInput
-              placeholder="Search…"
-              defaultValue={q}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") updateParam("q", (e.target as HTMLInputElement).value);
-              }}
-              onBlur={(e) => updateParam("q", e.target.value)}
-            />
-          </div>
-        )}
-
-        {(config.filters ?? []).map((filter) => (
-          <div key={filter.param} className="w-48">
-            <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">{filter.label}</label>
-            <FilterField
-              filter={filter}
-              value={filterValues[filter.param] ?? ""}
-              onChange={(v) => updateParam(filter.param, v)}
-            />
-          </div>
-        ))}
-
-        <div className="w-48">
-          <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">Sort by</label>
-          <Select value={sort} onChange={(e) => updateParam("sort", e.target.value)}>
-            {config.sortable.map((s) => (
-              <option key={s.key} value={s.key}>
-                {s.label}
-              </option>
-            ))}
-          </Select>
-        </div>
-        <div className="w-32">
-          <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">Order</label>
-          <Select value={order} onChange={(e) => updateParam("order", e.target.value)}>
-            <option value="asc">Ascending</option>
-            <option value="desc">Descending</option>
-          </Select>
-        </div>
-      </div>
+      <ListToolbar config={config} q={q} sort={sort} order={order} filterValues={filterValues} updateParam={updateParam} />
 
       {error ? (
         <ApiErrorAlert error={error} />
@@ -105,6 +63,72 @@ export default function ResourceListPage() {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+// The search box, per-resource filters, and sort/order controls above the
+// table - one cohesive toolbar, kept separate from the page's own
+// loading/error/pagination layout.
+function ListToolbar({
+  config,
+  q,
+  sort,
+  order,
+  filterValues,
+  updateParam,
+}: {
+  config: ResourceConfig;
+  q: string;
+  sort: string;
+  order: string;
+  filterValues: Record<string, string>;
+  updateParam: (key: string, value: string | undefined) => void;
+}) {
+  return (
+    <div className="mb-4 flex flex-wrap items-end gap-3">
+      {config.searchable && (
+        <div className="w-56">
+          <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">Search</label>
+          <TextInput
+            placeholder="Search…"
+            defaultValue={q}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") updateParam("q", (e.target as HTMLInputElement).value);
+            }}
+            onBlur={(e) => updateParam("q", e.target.value)}
+          />
+        </div>
+      )}
+
+      {(config.filters ?? []).map((filter) => (
+        <div key={filter.param} className="w-48">
+          <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">{filter.label}</label>
+          <FilterField
+            filter={filter}
+            value={filterValues[filter.param] ?? ""}
+            onChange={(v) => updateParam(filter.param, v)}
+          />
+        </div>
+      ))}
+
+      <div className="w-48">
+        <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">Sort by</label>
+        <Select value={sort} onChange={(e) => updateParam("sort", e.target.value)}>
+          {config.sortable.map((s) => (
+            <option key={s.key} value={s.key}>
+              {s.label}
+            </option>
+          ))}
+        </Select>
+      </div>
+      <div className="w-32">
+        <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">Order</label>
+        <Select value={order} onChange={(e) => updateParam("order", e.target.value)}>
+          <option value="asc">Ascending</option>
+          <option value="desc">Descending</option>
+        </Select>
+      </div>
     </div>
   );
 }

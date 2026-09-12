@@ -69,6 +69,95 @@ if (schemaOnly && process.exitCode !== 1) {
   );
 }
 
+// On an existing account, only what was actually asked for changes. Defaulting
+// the role here would mean that resetting a password silently demoted the
+// account to viewer — and the account most likely to need a reset is the admin.
+function resolveRole(options, account) {
+  return options.role ?? account?.role ?? "viewer";
+}
+
+function resolveFullName(options, account, email) {
+  return options.name ?? account?.full_name ?? email.split("@")[0];
+}
+
+// The password to apply, if any: what was given, a freshly generated one where
+// an account needs one but none was given, or null to leave it alone.
+function resolvePassword(account, options, email, fullName) {
+  let password = options.password ?? null;
+  const needsPassword = !account || options.reset;
+  if (needsPassword && !password) {
+    // 24 bytes rendered base64url: long, unguessable, and short enough to paste
+    // into a password manager once.
+    password = crypto.randomBytes(24).toString("base64url");
+  }
+  if (password) assertPasswordAcceptable(password, { email, fullName });
+  return password;
+}
+
+async function insertUser(client, { email, fullName, password, role }) {
+  const { rows } = await client.query(
+    `INSERT INTO users (email, full_name, password_hash, role)
+     VALUES ($1, $2, $3, $4) RETURNING id`,
+    [email, fullName, await hashPassword(password), role],
+  );
+  const userId = rows[0].id;
+  console.log(`Created ${role} account ${email} (id ${userId}).`);
+  return userId;
+}
+
+async function updateExistingUser(client, account, { email, role, fullName, password }) {
+  const userId = account.id;
+  const assignments = ["role = $2", "full_name = $3", "is_active = TRUE", "updated_at = now()"];
+  const params = [userId, role, fullName];
+  if (password) {
+    assignments.push(
+      `password_hash = $${params.push(await hashPassword(password))}`,
+      "password_changed_at = now()",
+      "failed_login_attempts = 0",
+      "locked_until = NULL",
+    );
+    // Changing the password here does what changing it through the API does:
+    // closes every session, so a compromised one cannot outlive the reset.
+    await client.query(
+      `UPDATE refresh_tokens
+          SET revoked_at = now(), revoked_reason = 'password_reset'
+        WHERE user_id = $1 AND revoked_at IS NULL`,
+      [userId],
+    );
+  }
+  await client.query(`UPDATE users SET ${assignments.join(", ")} WHERE id = $1`, params);
+  console.log(
+    password
+      ? `Reset the password for ${email} (id ${userId}, role ${role}). Existing sessions are signed out.`
+      : `Updated ${email} (id ${userId}) to role ${role}.`,
+  );
+  return userId;
+}
+
+async function applyPremisesGrant(client, userId, role, premisesOption) {
+  const ids =
+    premisesOption === "all"
+      ? (await client.query("SELECT id FROM premises ORDER BY id")).rows.map((row) => row.id)
+      : premisesOption
+          .split(",")
+          .map((value) => Number(value.trim()))
+          .filter(Number.isInteger);
+
+  await client.query("DELETE FROM user_premises WHERE user_id = $1", [userId]);
+  if (ids.length > 0) {
+    await client.query(
+      `INSERT INTO user_premises (user_id, premises_id)
+       SELECT $1, unnest($2::int[]) ON CONFLICT DO NOTHING`,
+      [userId, ids],
+    );
+  }
+  console.log(
+    role === "admin"
+      ? `Granted ${ids.length} premises (an admin reaches every premises regardless).`
+      : `Granted access to ${ids.length} premises.`,
+  );
+}
+
 async function upsertUser(client, options) {
   const email = options.email.trim().toLowerCase();
   if (options.role && !ROLES.includes(options.role)) {
@@ -81,80 +170,16 @@ async function upsertUser(client, options) {
   );
   const account = existing[0] ?? null;
 
-  // On an existing account, only what was actually asked for changes. Defaulting
-  // the role here would mean that resetting a password silently demoted the
-  // account to viewer — and the account most likely to need a reset is the admin.
-  const role = options.role ?? account?.role ?? "viewer";
-  const fullName = options.name ?? account?.full_name ?? email.split("@")[0];
+  const role = resolveRole(options, account);
+  const fullName = resolveFullName(options, account, email);
+  const password = resolvePassword(account, options, email, fullName);
 
-  let password = options.password ?? null;
-  const needsPassword = !account || options.reset;
-  if (needsPassword && !password) {
-    // 24 bytes rendered base64url: long, unguessable, and short enough to paste
-    // into a password manager once.
-    password = crypto.randomBytes(24).toString("base64url");
-  }
-  if (password) assertPasswordAcceptable(password, { email, fullName });
-
-  let userId;
-  if (!account) {
-    const { rows } = await client.query(
-      `INSERT INTO users (email, full_name, password_hash, role)
-       VALUES ($1, $2, $3, $4) RETURNING id`,
-      [email, fullName, await hashPassword(password), role],
-    );
-    userId = rows[0].id;
-    console.log(`Created ${role} account ${email} (id ${userId}).`);
-  } else {
-    userId = account.id;
-    const assignments = ["role = $2", "full_name = $3", "is_active = TRUE", "updated_at = now()"];
-    const params = [userId, role, fullName];
-    if (password) {
-      assignments.push(
-        `password_hash = $${params.push(await hashPassword(password))}`,
-        "password_changed_at = now()",
-        "failed_login_attempts = 0",
-        "locked_until = NULL",
-      );
-      // Changing the password here does what changing it through the API does:
-      // closes every session, so a compromised one cannot outlive the reset.
-      await client.query(
-        `UPDATE refresh_tokens
-            SET revoked_at = now(), revoked_reason = 'password_reset'
-          WHERE user_id = $1 AND revoked_at IS NULL`,
-        [userId],
-      );
-    }
-    await client.query(`UPDATE users SET ${assignments.join(", ")} WHERE id = $1`, params);
-    console.log(
-      password
-        ? `Reset the password for ${email} (id ${userId}, role ${role}). Existing sessions are signed out.`
-        : `Updated ${email} (id ${userId}) to role ${role}.`,
-    );
-  }
+  const userId = account
+    ? await updateExistingUser(client, account, { email, role, fullName, password })
+    : await insertUser(client, { email, fullName, password, role });
 
   if (options.premises) {
-    const ids =
-      options.premises === "all"
-        ? (await client.query("SELECT id FROM premises ORDER BY id")).rows.map((row) => row.id)
-        : options.premises
-            .split(",")
-            .map((value) => Number(value.trim()))
-            .filter(Number.isInteger);
-
-    await client.query("DELETE FROM user_premises WHERE user_id = $1", [userId]);
-    if (ids.length > 0) {
-      await client.query(
-        `INSERT INTO user_premises (user_id, premises_id)
-         SELECT $1, unnest($2::int[]) ON CONFLICT DO NOTHING`,
-        [userId, ids],
-      );
-    }
-    console.log(
-      role === "admin"
-        ? `Granted ${ids.length} premises (an admin reaches every premises regardless).`
-        : `Granted access to ${ids.length} premises.`,
-    );
+    await applyPremisesGrant(client, userId, role, options.premises);
   }
 
   if (password && !options.password) {

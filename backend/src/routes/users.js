@@ -175,49 +175,14 @@ usersRouter.patch(
     await withTransaction(async (client) => {
       const { premises_ids: premisesIds, unlock, ...fields } = req.body;
 
-      // An admin who demotes or deactivates their own account would lock
-      // everyone out of user administration if they were the last one.
-      if (userId === req.user.id && (fields.role !== undefined || fields.is_active === false)) {
-        await assertNotLastAdmin(client, userId);
-      }
-      if (before.role === "admin" && fields.role !== undefined && fields.role !== "admin") {
-        await assertNotLastAdmin(client, userId);
-      }
-
-      const assignments = [];
-      const params = [userId];
-      for (const [column, value] of Object.entries(fields)) {
-        assignments.push(`${column} = $${params.push(value)}`);
-      }
-      if (unlock) {
-        assignments.push("locked_until = NULL", "failed_login_attempts = 0");
-      }
-      if (assignments.length > 0) {
-        await client.query(
-          `UPDATE users SET ${assignments.join(", ")}, updated_at = now() WHERE id = $1`,
-          params,
-        );
-      }
-
+      await assertSelfOrRoleChangeAllowed(client, userId, req.user.id, before, fields);
+      await applyFieldUpdates(client, userId, fields, unlock);
       if (premisesIds !== undefined) {
         await client.query("DELETE FROM user_premises WHERE user_id = $1", [userId]);
         await grantPremises(client, userId, premisesIds, req.user.id);
       }
 
-      // Losing a role or a premises only takes effect at the next refresh,
-      // because the access token already issued carries the old claims. For a
-      // change that removes access, the sessions are closed so it is immediate.
-      const narrowing =
-        fields.is_active === false ||
-        (fields.role !== undefined && fields.role !== before.role) ||
-        premisesIds !== undefined;
-      if (narrowing) {
-        await client.query(
-          `UPDATE refresh_tokens SET revoked_at = now(), revoked_reason = 'access_changed'
-            WHERE user_id = $1 AND revoked_at IS NULL`,
-          [userId],
-        );
-      }
+      const narrowing = await revokeSessionsIfNarrowing(client, userId, before, fields, premisesIds);
 
       await audit.record(
         {
@@ -349,6 +314,49 @@ async function grantPremises(client, userId, premisesIds, grantedBy) {
      ON CONFLICT DO NOTHING`,
     [userId, unique, grantedBy],
   );
+}
+
+// An admin who demotes or deactivates their own account would lock everyone
+// out of user administration if they were the last one - the same is true of
+// demoting any other last admin.
+async function assertSelfOrRoleChangeAllowed(client, userId, actingUserId, before, fields) {
+  if (userId === actingUserId && (fields.role !== undefined || fields.is_active === false)) {
+    await assertNotLastAdmin(client, userId);
+  }
+  if (before.role === "admin" && fields.role !== undefined && fields.role !== "admin") {
+    await assertNotLastAdmin(client, userId);
+  }
+}
+
+async function applyFieldUpdates(client, userId, fields, unlock) {
+  const assignments = [];
+  const params = [userId];
+  for (const [column, value] of Object.entries(fields)) {
+    assignments.push(`${column} = $${params.push(value)}`);
+  }
+  if (unlock) {
+    assignments.push("locked_until = NULL", "failed_login_attempts = 0");
+  }
+  if (assignments.length === 0) return;
+  await client.query(`UPDATE users SET ${assignments.join(", ")}, updated_at = now() WHERE id = $1`, params);
+}
+
+// Losing a role or a premises only takes effect at the next refresh, because
+// the access token already issued carries the old claims. For a change that
+// removes access, the sessions are closed so it is immediate.
+async function revokeSessionsIfNarrowing(client, userId, before, fields, premisesIds) {
+  const narrowing =
+    fields.is_active === false ||
+    (fields.role !== undefined && fields.role !== before.role) ||
+    premisesIds !== undefined;
+  if (narrowing) {
+    await client.query(
+      `UPDATE refresh_tokens SET revoked_at = now(), revoked_reason = 'access_changed'
+        WHERE user_id = $1 AND revoked_at IS NULL`,
+      [userId],
+    );
+  }
+  return narrowing;
 }
 
 // Locking every admin out of the system is not recoverable through the API, so

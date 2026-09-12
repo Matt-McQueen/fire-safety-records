@@ -28,35 +28,9 @@ export async function list(definition, { user, query, client }) {
   const push = (value) => `$${params.push(value)}`;
 
   applyPremisesFilter(definition, user, where, push);
-
-  for (const filter of definition.filters ?? []) {
-    const value = query[filter.param];
-    if (value === undefined) continue;
-    if (value === null) {
-      where.push(`${filter.column} IS NULL`);
-    } else if (Array.isArray(value)) {
-      where.push(`${filter.column} = ANY(${push(value)})`);
-    } else {
-      where.push(`${filter.column} = ${push(value)}`);
-    }
-  }
-
-  for (const range of definition.dateRanges ?? []) {
-    const from = query[`${range.param}_from`];
-    const to = query[`${range.param}_to`];
-    if (from !== undefined) where.push(`${range.column} >= ${push(from)}`);
-    if (to !== undefined) where.push(`${range.column} <= ${push(to)}`);
-  }
-
-  if (query.q && definition.search?.length) {
-    // The user's text is a parameter; only the column list comes from the
-    // definition. Wildcards in the input are escaped so a search for "100%"
-    // does not match everything.
-    const pattern = push(`%${escapeLike(query.q)}%`);
-    const clauses = definition.search.map((column) => `${column} ILIKE ${pattern} ESCAPE '\\'`);
-    where.push(`(${clauses.join(" OR ")})`);
-  }
-
+  applyFieldFilters(definition, query, where, push);
+  applyDateRangeFilters(definition, query, where, push);
+  applySearchFilter(definition, query, where, push);
   for (const extra of definition.staticFilters ?? []) {
     where.push(extra);
   }
@@ -104,7 +78,10 @@ export async function get(definition, id, { user, client }) {
 
 // Fetches one row and refuses it if the user has no access to it.
 // Every write path starts here, so an update or delete cannot reach a record
-// the caller could not have read.
+// the caller could not have read. Kept as one block rather than split further:
+// this is the access-control decision every write in the app funnels through,
+// and it is easier to audit as one function than scattered across several.
+// fallow-ignore-next-line complexity
 export async function fetchScoped(definition, id, { user, client, forUpdate = false }) {
   const runner = client ?? pool;
   const { scope } = definition;
@@ -160,15 +137,8 @@ export async function create(definition, body, { user, request }) {
     const context = { user, client, premisesId, request, definition };
     const values = (await definition.rules?.beforeCreate?.(body, context)) ?? body;
 
-    const columns = Object.keys(values);
-    if (columns.length === 0) throw ruleViolation("Nothing to insert");
-
-    const { rows } = await client.query(
-      `INSERT INTO ${definition.table} (${columns.map(quote).join(", ")})
-       VALUES (${columns.map((_, index) => `$${index + 1}`).join(", ")})
-       RETURNING *`,
-      columns.map((column) => values[column]),
-    );
+    const { sql, params } = buildInsertStatement(definition, values);
+    const { rows } = await client.query(sql, params);
     const created = rows[0];
 
     await definition.rules?.afterCreate?.(created, context);
@@ -204,40 +174,17 @@ export async function update(definition, id, body, { user, request }) {
     };
     const values = (await definition.rules?.beforeUpdate?.(body, before, context)) ?? body;
 
-    const columns = Object.keys(values);
-    if (columns.length === 0) {
+    if (Object.keys(values).length === 0) {
       return present(definition, before);
     }
-
     if (definition.timestamps) values.updated_at = new Date();
 
-    const assignments = Object.keys(values).map(
-      (column, index) => `${quote(column)} = $${index + 2}`,
-    );
-    const { rows } = await client.query(
-      `UPDATE ${definition.table} SET ${assignments.join(", ")}
-        WHERE ${primaryKey(definition)} = $1 RETURNING *`,
-      [id, ...Object.keys(values).map((column) => values[column])],
-    );
+    const { sql, params } = buildUpdateStatement(definition, id, values);
+    const { rows } = await client.query(sql, params);
     const updated = rows[0];
 
     await definition.rules?.afterUpdate?.(updated, before, context);
-
-    const changes = audit.changedFields(before, values);
-    if (Object.keys(changes).length > 0) {
-      await audit.record(
-        {
-          user,
-          action: `${definition.name}.update`,
-          resource: definition.name,
-          resourceId: id,
-          premisesId: before._premises_id,
-          request,
-          detail: { changed: changes },
-        },
-        client,
-      );
-    }
+    await auditUpdateIfChanged({ user, definition, id, before, values, request, client });
 
     return present(definition, await reread(definition, id, client));
   });
@@ -289,23 +236,69 @@ async function resolvePremisesForCreate(definition, body, client) {
   // premises table itself, the row being its own premises) governs reads.
   if (scope.unscoped || scope.accessClause || scope.selfPremises) return null;
 
-  if (!scope.parent) {
-    const premisesId = body.premises_id ?? null;
-    if (premisesId === null) {
-      if (scope.nullMeansShared) return null;
-      throw ruleViolation("premises_id must be given");
-    }
-    const { rows } = await client.query("SELECT id FROM premises WHERE id = $1", [premisesId]);
-    if (rows.length === 0) throw notFound(`Premises ${premisesId} was not found`);
-    return premisesId;
-  }
+  return scope.parent
+    ? resolveParentPremises(scope.parent, body, client)
+    : resolveOwnPremises(scope, body, client);
+}
 
-  const parentId = body[scope.parent.key];
-  const { rows } = await client.query(scope.parent.premisesSql, [parentId]);
+// A row that names its own premises_id directly.
+async function resolveOwnPremises(scope, body, client) {
+  const premisesId = body.premises_id ?? null;
+  if (premisesId === null) {
+    if (scope.nullMeansShared) return null;
+    throw ruleViolation("premises_id must be given");
+  }
+  const { rows } = await client.query("SELECT id FROM premises WHERE id = $1", [premisesId]);
+  if (rows.length === 0) throw notFound(`Premises ${premisesId} was not found`);
+  return premisesId;
+}
+
+// A row that inherits its premises from a parent record instead.
+async function resolveParentPremises(parent, body, client) {
+  const parentId = body[parent.key];
+  const { rows } = await client.query(parent.premisesSql, [parentId]);
   if (rows.length === 0) {
-    throw notFound(scope.parent.missing ?? `The parent record ${parentId} was not found`);
+    throw notFound(parent.missing ?? `The parent record ${parentId} was not found`);
   }
   return rows[0].premises_id;
+}
+
+function buildInsertStatement(definition, values) {
+  const columns = Object.keys(values);
+  if (columns.length === 0) throw ruleViolation("Nothing to insert");
+  return {
+    sql: `INSERT INTO ${definition.table} (${columns.map(quote).join(", ")})
+          VALUES (${columns.map((_, index) => `$${index + 1}`).join(", ")})
+          RETURNING *`,
+    params: columns.map((column) => values[column]),
+  };
+}
+
+function buildUpdateStatement(definition, id, values) {
+  const columns = Object.keys(values);
+  const assignments = columns.map((column, index) => `${quote(column)} = $${index + 2}`);
+  return {
+    sql: `UPDATE ${definition.table} SET ${assignments.join(", ")}
+           WHERE ${primaryKey(definition)} = $1 RETURNING *`,
+    params: [id, ...columns.map((column) => values[column])],
+  };
+}
+
+async function auditUpdateIfChanged({ user, definition, id, before, values, request, client }) {
+  const changes = audit.changedFields(before, values);
+  if (Object.keys(changes).length === 0) return;
+  await audit.record(
+    {
+      user,
+      action: `${definition.name}.update`,
+      resource: definition.name,
+      resourceId: id,
+      premisesId: before._premises_id,
+      request,
+      detail: { changed: changes },
+    },
+    client,
+  );
 }
 
 function assertRowAccess(definition, user, premisesId, options) {
@@ -316,6 +309,39 @@ function assertRowAccess(definition, user, premisesId, options) {
   if (premisesId === null && definition.scope.nullMeansShared) return;
   if (premisesId === null) return;
   assertPremisesAccess(user, premisesId, options);
+}
+
+function applyFieldFilters(definition, query, where, push) {
+  for (const filter of definition.filters ?? []) {
+    const value = query[filter.param];
+    if (value === undefined) continue;
+    if (value === null) {
+      where.push(`${filter.column} IS NULL`);
+    } else if (Array.isArray(value)) {
+      where.push(`${filter.column} = ANY(${push(value)})`);
+    } else {
+      where.push(`${filter.column} = ${push(value)}`);
+    }
+  }
+}
+
+function applyDateRangeFilters(definition, query, where, push) {
+  for (const range of definition.dateRanges ?? []) {
+    const from = query[`${range.param}_from`];
+    const to = query[`${range.param}_to`];
+    if (from !== undefined) where.push(`${range.column} >= ${push(from)}`);
+    if (to !== undefined) where.push(`${range.column} <= ${push(to)}`);
+  }
+}
+
+function applySearchFilter(definition, query, where, push) {
+  if (!query.q || !definition.search?.length) return;
+  // The user's text is a parameter; only the column list comes from the
+  // definition. Wildcards in the input are escaped so a search for "100%"
+  // does not match everything.
+  const pattern = push(`%${escapeLike(query.q)}%`);
+  const clauses = definition.search.map((column) => `${column} ILIKE ${pattern} ESCAPE '\\'`);
+  where.push(`(${clauses.join(" OR ")})`);
 }
 
 function applyPremisesFilter(definition, user, where, push) {

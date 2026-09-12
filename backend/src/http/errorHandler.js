@@ -26,11 +26,19 @@ export function notFoundHandler(req, res) {
 export function errorHandler(error, req, res, next) {
   const apiError = asApiError(error);
 
+  auditErrorOutcome(apiError, error, req);
+
+  if (res.headersSent) return next(error);
+
+  res.status(apiError.status).json(buildErrorBody(apiError, req, error));
+}
+
+// Every 5xx is a failure worth investigating; every 401/403 is a denial worth
+// tracking regardless of which endpoint threw it (see errorHandler.js's own
+// module comment - this is the one place either outcome is recorded).
+function auditErrorOutcome(apiError, error, req) {
   if (apiError.status >= 500) {
-    console.error(
-      `[${req.id}] ${req.method} ${req.originalUrl} failed`,
-      error?.stack ?? error,
-    );
+    console.error(`[${req.id}] ${req.method} ${req.originalUrl} failed`, error?.stack ?? error);
     audit.record({
       user: req.user,
       action: `${req.method} ${req.originalUrl}`,
@@ -47,9 +55,9 @@ export function errorHandler(error, req, res, next) {
       detail: { code: apiError.code, message: apiError.message },
     });
   }
+}
 
-  if (res.headersSent) return next(error);
-
+function buildErrorBody(apiError, req, error) {
   const body = {
     error: {
       code: apiError.code,
@@ -65,9 +73,14 @@ export function errorHandler(error, req, res, next) {
     body.error.stack = error.stack.split("\n").slice(0, 8);
   }
 
-  res.status(apiError.status).json(body);
+  return body;
 }
 
+// A flat chain of "does this look like X" translations, each one line and
+// independently readable; splitting it into one function per case would
+// scatter this security-relevant list (what a raw error is allowed to look
+// like to a client) across the file for no reduction in real complexity.
+// fallow-ignore-next-line complexity
 function asApiError(error) {
   if (error instanceof ApiError) return error;
 

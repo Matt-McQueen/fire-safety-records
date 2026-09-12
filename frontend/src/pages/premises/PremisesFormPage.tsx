@@ -7,6 +7,10 @@ import { ResourceFormFooter } from "../../components/resource/ResourceFormFooter
 import NotFoundPage from "../NotFoundPage";
 import { usePremisesForm } from "./usePremisesForm";
 
+// Already delegates its fields, footer and error rendering to their own
+// components; what remains is this page's own conditional layout, which
+// splitting further would only relocate.
+// fallow-ignore-next-line complexity
 export default function PremisesFormPage() {
   const { id } = useParams();
   const isNew = id === "new" || id === undefined;

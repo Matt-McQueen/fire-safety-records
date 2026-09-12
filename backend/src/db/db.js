@@ -50,6 +50,9 @@ const CHECK_VIOLATION = "23514";
 // rules in src/domain check the same things and produce a better message. This
 // translation exists so that a rule missed in the domain layer still fails
 // safely and legibly rather than as an unexplained 500.
+// A flat error-code-to-message lookup; splitting it into one function per
+// case would not make any single constraint's translation clearer.
+// fallow-ignore-next-line complexity
 export function translateDatabaseError(error) {
   switch (error?.code) {
     case FOREIGN_KEY_VIOLATION:

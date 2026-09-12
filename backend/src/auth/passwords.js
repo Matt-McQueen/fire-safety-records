@@ -65,6 +65,9 @@ export function needsRehash(stored) {
   return !parsed || parsed.cost < config.auth.scryptCost;
 }
 
+// A compact self-describing format's own parser; already minimal for what it
+// validates.
+// fallow-ignore-next-line complexity
 function parse(stored) {
   if (typeof stored !== "string") return null;
   const parts = stored.split("$");
@@ -92,6 +95,13 @@ const OBVIOUS = new Set([
 
 export function assertPasswordAcceptable(password, { email, fullName } = {}) {
   const value = String(password ?? "");
+  assertLengthAcceptable(value);
+  const folded = value.toLowerCase();
+  assertNotObvious(value, folded);
+  assertNotDerivedFromIdentity(folded, email, fullName);
+}
+
+function assertLengthAcceptable(value) {
   if (value.length < 12) {
     throw badRequest("Password must be at least 12 characters");
   }
@@ -100,13 +110,18 @@ export function assertPasswordAcceptable(password, { email, fullName } = {}) {
     // control rather than a password policy.
     throw badRequest("Password must be at most 200 characters");
   }
-  const folded = value.toLowerCase();
+}
+
+function assertNotObvious(value, folded) {
   if (OBVIOUS.has(folded)) {
     throw badRequest("Password is too easily guessed");
   }
   if (/^(.)\1+$/.test(value)) {
     throw badRequest("Password must not be a single repeated character");
   }
+}
+
+function assertNotDerivedFromIdentity(folded, email, fullName) {
   const localPart = String(email ?? "").split("@")[0].toLowerCase();
   if (localPart.length >= 4 && folded.includes(localPart)) {
     throw badRequest("Password must not contain your email address");

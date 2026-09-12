@@ -145,18 +145,24 @@ function assertIncidentCoherent(body, before) {
   notBefore(discoveredOn, occurredOn, "discovered_on", "occurred_on");
   notBefore(reportedOn, occurredOn, "riddor_reported_on", "occurred_on");
 
-  if (!reportable) {
-    // Being reported to the enforcing authority is what makes an incident
-    // reportable. A reference or a report date on an incident marked not
-    // reportable is a contradiction, and reg 12 turns on which it is.
-    if (present(reportedOn) || present(reference)) {
-      throw ruleViolation(
-        "This incident is marked as not reportable under RIDDOR, but carries a report date or reference. Set riddor_reportable if it was reported.",
-      );
-    }
-    return;
+  if (reportable) {
+    assertRiddorReportRecorded(particulars, reference, reportedOn);
+  } else {
+    assertNotReportedWithoutBeingReportable(reportedOn, reference);
   }
+}
 
+// Being reported to the enforcing authority is what makes an incident
+// reportable. A reference or a report date on an incident marked not
+// reportable is a contradiction, and reg 12 turns on which it is.
+function assertNotReportedWithoutBeingReportable(reportedOn, reference) {
+  if (!present(reportedOn) && !present(reference)) return;
+  throw ruleViolation(
+    "This incident is marked as not reportable under RIDDOR, but carries a report date or reference. Set riddor_reportable if it was reported.",
+  );
+}
+
+function assertRiddorReportRecorded(particulars, reference, reportedOn) {
   // Reg 12(1)(b): the record of a reportable incident keeps the particulars
   // that had to be notified.
   if (!present(particulars)) {
@@ -237,6 +243,7 @@ export const enforcementNotices = {
   },
 };
 
+// fallow-ignore-next-line complexity
 function assertNoticeCoherent(body, before) {
   const servedOn = resulting(body, before, "served_on");
   const inForce = resulting(body, before, "in_force") ?? true;

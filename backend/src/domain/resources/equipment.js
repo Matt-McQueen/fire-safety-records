@@ -504,18 +504,38 @@ export const escapeRouteChecks = {
 
 // --- shared check rules ----------------------------------------------------
 
-function assertCheckCoherent(body, before) {
-  const performedOn = resulting(body, before, "performed_on");
-  const outcome = resulting(body, before, "outcome");
-  const defects = resulting(body, before, "defects_found");
-  const remedialAction = resulting(body, before, "remedial_action");
-  const remediedOn = resulting(body, before, "remedied_on");
-  const nextDue = resulting(body, before, "next_due_on");
-
+// Shared by every check resource (equipment, escape routes): a check cannot
+// predate the equipment it was performed on, or claim to be remedied or next
+// due before it happened.
+function assertCheckDatesCoherent(performedOn, remediedOn, nextDue) {
   notInFuture(performedOn, "performed_on");
   notInFuture(remediedOn, "remedied_on");
   notBefore(remediedOn, performedOn, "remedied_on", "performed_on");
   notBefore(nextDue, performedOn, "next_due_on", "performed_on");
+}
+
+// Shared by every check resource: the outcome has to agree with what was
+// found, and a remedy has to say what was done about it.
+function assertOutcomeCoherent({ outcome, evidence, evidenceField, evidenceNoun, remediedOn, remedialAction }) {
+  if (outcome !== "pass" && !present(evidence)) {
+    throw ruleViolation(`An outcome of ${outcome} must record what was found in ${evidenceField}`);
+  }
+  if (outcome === "pass" && present(evidence)) {
+    throw ruleViolation(`A check that records ${evidenceNoun} did not pass. Use pass_with_defects or fail.`);
+  }
+  if (present(remediedOn) && !present(remedialAction)) {
+    throw ruleViolation("remedial_action must say what was done when remedied_on is set");
+  }
+}
+
+function assertCheckCoherent(body, before) {
+  const performedOn = resulting(body, before, "performed_on");
+  const outcome = resulting(body, before, "outcome");
+  const remedialAction = resulting(body, before, "remedial_action");
+  const remediedOn = resulting(body, before, "remedied_on");
+  const nextDue = resulting(body, before, "next_due_on");
+
+  assertCheckDatesCoherent(performedOn, remediedOn, nextDue);
 
   if (
     !present(resulting(body, before, "performed_by_id")) &&
@@ -528,51 +548,38 @@ function assertCheckCoherent(body, before) {
     );
   }
 
-  if (outcome !== "pass" && !present(defects)) {
-    throw ruleViolation(
-      `An outcome of ${outcome} must record what was found in defects_found`,
-    );
-  }
-  if (outcome === "pass" && present(defects)) {
-    throw ruleViolation(
-      "A check that records defects did not pass. Use pass_with_defects or fail.",
-    );
-  }
-  if (present(remediedOn) && !present(remedialAction)) {
-    throw ruleViolation("remedial_action must say what was done when remedied_on is set");
-  }
+  assertOutcomeCoherent({
+    outcome,
+    evidence: resulting(body, before, "defects_found"),
+    evidenceField: "defects_found",
+    evidenceNoun: "defects",
+    remediedOn,
+    remedialAction,
+  });
 }
 
 function assertRouteCheckCoherent(body, before) {
   const performedOn = resulting(body, before, "performed_on");
   const outcome = resulting(body, before, "outcome");
-  const obstructions = resulting(body, before, "obstructions_found");
   const remedialAction = resulting(body, before, "remedial_action");
   const remediedOn = resulting(body, before, "remedied_on");
   const nextDue = resulting(body, before, "next_due_on");
 
-  notInFuture(performedOn, "performed_on");
-  notInFuture(remediedOn, "remedied_on");
-  notBefore(remediedOn, performedOn, "remedied_on", "performed_on");
-  notBefore(nextDue, performedOn, "next_due_on", "performed_on");
+  assertCheckDatesCoherent(performedOn, remediedOn, nextDue);
 
-  if (outcome !== "pass" && !present(obstructions)) {
-    throw ruleViolation(
-      `An outcome of ${outcome} must record what was found in obstructions_found`,
-    );
-  }
-  if (outcome === "pass" && present(obstructions)) {
-    throw ruleViolation(
-      "A check that records obstructions did not pass. Use pass_with_defects or fail.",
-    );
-  }
-  if (present(remediedOn) && !present(remedialAction)) {
-    throw ruleViolation("remedial_action must say what was done when remedied_on is set");
-  }
+  assertOutcomeCoherent({
+    outcome,
+    evidence: resulting(body, before, "obstructions_found"),
+    evidenceField: "obstructions_found",
+    evidenceNoun: "obstructions",
+    remediedOn,
+    remedialAction,
+  });
 }
 
 // A schedule named on a check has to be one that could apply to it: the same
 // premises (or the organisation-wide default) and the same kind of check.
+// fallow-ignore-next-line complexity
 async function assertScheduleFits(client, scheduleId, { premisesId, appliesTo, checkType }) {
   if (!present(scheduleId)) return;
   const { rows } = await client.query("SELECT * FROM check_schedules WHERE id = $1", [scheduleId]);

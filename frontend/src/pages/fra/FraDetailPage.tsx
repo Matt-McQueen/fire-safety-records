@@ -28,6 +28,11 @@ const FINDINGS_PATH = "/fra-significant-findings";
 const MEASURES_PATH = "/fra-measures";
 const PERSONS_AT_RISK_PATH = "/fra-persons-at-risk";
 
+// Already delegates its overview, edit form, findings, measures and persons-
+// at-risk sections to their own components; what remains is this page's own
+// draft/current/superseded layout, which splitting further would only
+// relocate rather than reduce.
+// fallow-ignore-next-line complexity
 export default function FraDetailPage() {
   const { id } = useParams();
   const assessmentId = Number(id);
@@ -165,6 +170,10 @@ function Section({ title, children, className = "" }: { title: string; children:
   );
 }
 
+// Already a data-array + map, the usual way to keep a field-display block
+// flat; the remaining branches are per-field fallbacks, not accumulated
+// control flow.
+// fallow-ignore-next-line complexity
 function OverviewCard({ fra }: { fra: Row }) {
   const carriedOutById = fra.carried_out_by_id as number | null;
   const { data: carriedOutBy } = useQuery({
@@ -395,6 +404,10 @@ function FindingsList({
   );
 }
 
+// Its own editing/error state plus an edit-form-or-display branch and its
+// nested measures list; already the smallest unit this can be split into
+// without breaking that edit toggle apart from what it toggles.
+// fallow-ignore-next-line complexity
 function FindingCard({
   finding,
   canEdit,
@@ -484,6 +497,10 @@ function riskTone(rating: string): "red" | "amber" | "green" | "neutral" {
   return "neutral";
 }
 
+// Its own editing/error state plus an edit-form-or-display branch; already
+// the smallest unit this can be split into without breaking that edit toggle
+// apart from what it toggles.
+// fallow-ignore-next-line complexity
 function MeasureRow({ measure, canEdit, onChange }: { measure: Row; canEdit: boolean; onChange: () => void }) {
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState<unknown>(null);

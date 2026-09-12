@@ -24,50 +24,57 @@ export function atLeast(role, minimum) {
 
 export async function authenticate(req, res, next) {
   try {
-    const header = req.get("authorization") ?? "";
-    const [scheme, token] = header.split(" ");
-    if (!/^Bearer$/i.test(scheme ?? "") || !token) {
-      throw unauthorised("An access token is required");
-    }
-
+    const token = extractBearerToken(req);
     const claims = verifyAccessToken(token);
-
-    // The token says who is asking; everything that decides what they may do is
-    // read here. One query per request buys immediate effect for a role change,
-    // a deactivation, a password change and a premises grant alike.
-    const { rows } = await query(
-      `SELECT u.id, u.email, u.full_name, u.role, u.person_id, u.is_active,
-              u.password_changed_at,
-              COALESCE(
-                (SELECT array_agg(up.premises_id ORDER BY up.premises_id)
-                   FROM user_premises up WHERE up.user_id = u.id),
-                '{}'
-              ) AS premises_ids
-         FROM users u WHERE u.id = $1`,
-      [Number(claims.sub)],
-    );
-    const user = rows[0];
-    if (!user || !user.is_active) {
-      throw unauthorised("Account is no longer active");
-    }
-    if (claims.pwd !== passwordEpoch(user.password_changed_at)) {
-      throw unauthorised("Password has changed; sign in again");
-    }
-
-    req.user = {
-      id: user.id,
-      email: user.email,
-      name: user.full_name,
-      role: user.role,
-      personId: user.person_id,
-      // Null means unrestricted, which only an admin ever is. An empty array
-      // means "no premises granted", which denies everything.
-      premisesIds: user.role === "admin" ? null : user.premises_ids,
-    };
+    req.user = await resolveAuthenticatedUser(claims);
     next();
   } catch (error) {
     next(error);
   }
+}
+
+function extractBearerToken(req) {
+  const header = req.get("authorization") ?? "";
+  const [scheme, token] = header.split(" ");
+  if (!/^Bearer$/i.test(scheme ?? "") || !token) {
+    throw unauthorised("An access token is required");
+  }
+  return token;
+}
+
+// The token says who is asking; everything that decides what they may do is
+// read here. One query per request buys immediate effect for a role change, a
+// deactivation, a password change and a premises grant alike.
+async function resolveAuthenticatedUser(claims) {
+  const { rows } = await query(
+    `SELECT u.id, u.email, u.full_name, u.role, u.person_id, u.is_active,
+            u.password_changed_at,
+            COALESCE(
+              (SELECT array_agg(up.premises_id ORDER BY up.premises_id)
+                 FROM user_premises up WHERE up.user_id = u.id),
+              '{}'
+            ) AS premises_ids
+       FROM users u WHERE u.id = $1`,
+    [Number(claims.sub)],
+  );
+  const user = rows[0];
+  if (!user || !user.is_active) {
+    throw unauthorised("Account is no longer active");
+  }
+  if (claims.pwd !== passwordEpoch(user.password_changed_at)) {
+    throw unauthorised("Password has changed; sign in again");
+  }
+
+  return {
+    id: user.id,
+    email: user.email,
+    name: user.full_name,
+    role: user.role,
+    personId: user.person_id,
+    // Null means unrestricted, which only an admin ever is. An empty array
+    // means "no premises granted", which denies everything.
+    premisesIds: user.role === "admin" ? null : user.premises_ids,
+  };
 }
 
 export function requireRole(minimum) {

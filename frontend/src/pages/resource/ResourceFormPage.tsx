@@ -7,6 +7,10 @@ import { ResourceFormFooter } from "../../components/resource/ResourceFormFooter
 import NotFoundPage from "../NotFoundPage";
 import { useResourceForm } from "./useResourceForm";
 
+// Already delegates its form, footer and error rendering to their own
+// components; what remains is this page's own conditional layout (loading,
+// not-found, new-vs-edit), which splitting further would only relocate.
+// fallow-ignore-next-line complexity
 export default function ResourceFormPage() {
   const { resourceName, id } = useParams();
   const config = resourceName ? findResourceConfig(resourceName) : undefined;

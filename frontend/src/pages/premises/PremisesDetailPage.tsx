@@ -76,6 +76,10 @@ export default function PremisesDetailPage() {
   );
 }
 
+// Already a data-array + map, the usual way to keep a field-display block
+// flat; the remaining branches are per-field fallbacks and status badges, not
+// accumulated control flow.
+// fallow-ignore-next-line complexity
 function OverviewTab({ premises }: { premises: Record<string, unknown> }) {
   const rows: [string, unknown][] = [
     ["Address", [premises.address_line1, premises.address_line2, premises.town, premises.postcode].filter(Boolean).join(", ") || "—"],

@@ -330,41 +330,45 @@ async function assertRoleCoherent(client, body, before, premisesId) {
 
   const person = await loadRow(client, "people", personId, "Person");
 
-  // Fire (Scotland) Act 2005 s.53(4) and SSI 2006/456 reg 15: the people
-  // nominated to implement firefighting measures, and those given evacuation
-  // duties, are employees. An outside contractor can advise but cannot be the
-  // nominated person.
-  if (["nominated_firefighting", "fire_warden"].includes(role) && !person.is_employee) {
-    throw ruleViolation(
-      `A ${role.replace(/_/g, " ")} must be an employee. Record an external adviser as competent_assistance instead.`,
-    );
-  }
+  assertNominatedRoleIsEmployee(role, person);
+  assertCompetenceRecorded(role, resulting(body, before, "competence_evidence"));
+  await assertNoDutyHolderClash(client, role, endedOn, premisesId, before?.id ?? 0);
+}
 
-  // s.53(1) and reg 15 both turn on competence, so the record has to say what
-  // the competence rests on rather than merely asserting it.
-  if (
-    ["nominated_firefighting", "competent_assistance"].includes(role) &&
-    !present(resulting(body, before, "competence_evidence"))
-  ) {
-    throw ruleViolation(
-      "competence_evidence must record the training, experience or qualification the appointment relies on",
-    );
-  }
+// Fire (Scotland) Act 2005 s.53(4) and SSI 2006/456 reg 15: the people
+// nominated to implement firefighting measures, and those given evacuation
+// duties, are employees. An outside contractor can advise but cannot be the
+// nominated person.
+function assertNominatedRoleIsEmployee(role, person) {
+  if (!["nominated_firefighting", "fire_warden"].includes(role) || person.is_employee) return;
+  throw ruleViolation(
+    `A ${role.replace(/_/g, " ")} must be an employee. Record an external adviser as competent_assistance instead.`,
+  );
+}
 
-  // s.54: one person has control of the premises. Two people simultaneously
-  // holding it makes the record useless as evidence of who the duty holder is.
-  if (role === "duty_holder" && !present(endedOn)) {
-    const clash = await countRows(
-      client,
-      `SELECT count(*) FROM safety_roles
-        WHERE premises_id = $1 AND role = 'duty_holder' AND ended_on IS NULL AND id <> $2`,
-      [premisesId, before?.id ?? 0],
+// s.53(1) and reg 15 both turn on competence, so the record has to say what
+// the competence rests on rather than merely asserting it.
+function assertCompetenceRecorded(role, competenceEvidence) {
+  if (!["nominated_firefighting", "competent_assistance"].includes(role) || present(competenceEvidence)) return;
+  throw ruleViolation(
+    "competence_evidence must record the training, experience or qualification the appointment relies on",
+  );
+}
+
+// s.54: one person has control of the premises. Two people simultaneously
+// holding it makes the record useless as evidence of who the duty holder is.
+async function assertNoDutyHolderClash(client, role, endedOn, premisesId, excludeId) {
+  if (role !== "duty_holder" || present(endedOn)) return;
+  const clash = await countRows(
+    client,
+    `SELECT count(*) FROM safety_roles
+      WHERE premises_id = $1 AND role = 'duty_holder' AND ended_on IS NULL AND id <> $2`,
+    [premisesId, excludeId],
+  );
+  if (clash > 0) {
+    throw conflict(
+      "This premises already has a duty holder. End the current appointment before recording a new one.",
     );
-    if (clash > 0) {
-      throw conflict(
-        "This premises already has a duty holder. End the current appointment before recording a new one.",
-      );
-    }
   }
 }
 

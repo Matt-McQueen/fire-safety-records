@@ -5,6 +5,7 @@ import { getResource, listResource } from "../../lib/api";
 import { useAuth } from "../../lib/AuthContext";
 import { atLeast } from "../../lib/roles";
 import { ESCAPE_ROUTE_CHECK_FIELDS, ESCAPE_ROUTE_FIELDS, OUTCOME_LABELS } from "../../resources/equipment";
+import type { Row } from "../../types/api";
 import { Badge, Card, CenteredSpinner, PageHeader } from "../../components/ui/primitives";
 import { Button } from "../../components/ui/Button";
 import { DetailField } from "../../components/resource/DetailField";
@@ -15,6 +16,10 @@ import NotFoundPage from "../NotFoundPage";
 
 const CHECKS_PATH = "/escape-route-checks";
 
+// Already delegates its check rows to EscapeRouteCheckRow and its edit form to
+// ResourceEditCard; what remains is this page's own status badges and
+// editing/delete layout, which is JSX branching rather than accumulated logic.
+// fallow-ignore-next-line complexity
 export default function EscapeRouteDetailPage() {
   const { id } = useParams();
   const routeId = Number(id);
@@ -102,22 +107,7 @@ export default function EscapeRouteDetailPage() {
 
       <CheckHistoryList
         checks={checksQuery.data?.data}
-        renderCheck={(check) => (
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-sm font-medium text-slate-800 dark:text-slate-200">{String(check.performed_on)}</p>
-              {Boolean(check.obstructions_found) && (
-                <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">{String(check.obstructions_found)}</p>
-              )}
-              {Boolean(check.next_due_on) && (
-                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Next due: {String(check.next_due_on)}</p>
-              )}
-            </div>
-            <Badge tone={check.outcome === "pass" ? "green" : check.obstruction_outstanding ? "red" : "amber"}>
-              {OUTCOME_LABELS[String(check.outcome)] ?? String(check.outcome)}
-            </Badge>
-          </div>
-        )}
+        renderCheck={(check) => <EscapeRouteCheckRow check={check} />}
         path={CHECKS_PATH}
         fields={ESCAPE_ROUTE_CHECK_FIELDS}
         parentKey="escape_route_id"
@@ -125,6 +115,25 @@ export default function EscapeRouteDetailPage() {
         canAdd={canWrite && Boolean(route.in_service)}
         onAdded={invalidate}
       />
+    </div>
+  );
+}
+
+function EscapeRouteCheckRow({ check }: { check: Row }) {
+  return (
+    <div className="flex items-start justify-between gap-3">
+      <div>
+        <p className="text-sm font-medium text-slate-800 dark:text-slate-200">{String(check.performed_on)}</p>
+        {Boolean(check.obstructions_found) && (
+          <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">{String(check.obstructions_found)}</p>
+        )}
+        {Boolean(check.next_due_on) && (
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Next due: {String(check.next_due_on)}</p>
+        )}
+      </div>
+      <Badge tone={check.outcome === "pass" ? "green" : check.obstruction_outstanding ? "red" : "amber"}>
+        {OUTCOME_LABELS[String(check.outcome)] ?? String(check.outcome)}
+      </Badge>
     </div>
   );
 }

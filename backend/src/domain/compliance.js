@@ -91,36 +91,9 @@ export async function complianceForPremises(premisesId, user) {
 
 // --- the assessment itself (SSI 2006/456 regs 3, 8, 9) ----------------------
 function fireRiskAssessmentChecks(assessment, mustRecord) {
-  if (!assessment) {
-    return [
-      {
-        key: "fire_risk_assessment",
-        provision: "Fire (Scotland) Act 2005 s.53; SSI 2006/456 regs 3, 8",
-        status: "missing",
-        summary: mustRecord
-          ? "No current fire risk assessment is recorded, and this premises is under a duty to record one."
-          : "No current fire risk assessment is recorded. The duty to carry one out applies whether or not it must be recorded.",
-      },
-    ];
-  }
+  if (!assessment) return [missingAssessmentCheck(mustRecord)];
 
-  const checks = [
-    {
-      key: "fire_risk_assessment",
-      provision: "SSI 2006/456 regs 3, 8, 9",
-      status: assessment.review_overdue ? "attention" : "ok",
-      summary: assessment.review_overdue
-        ? `The current assessment was due for review on ${asDate(assessment.next_review_due)}.`
-        : `Assessment ${assessment.reference ?? assessment.id} is current, next review ${asDate(assessment.next_review_due) ?? "not set"}.`,
-      detail: {
-        id: assessment.id,
-        carried_out_on: asDate(assessment.carried_out_on),
-        recorded_on: asDate(assessment.recorded_on),
-        next_review_due: asDate(assessment.next_review_due),
-        significant_findings: Number(assessment.finding_count),
-      },
-    },
-  ];
+  const checks = [currentAssessmentCheck(assessment)];
 
   // Reg 9(1)(a) requires the record to include the significant findings.
   if (mustRecord && !assessment.recorded_on) {
@@ -134,6 +107,35 @@ function fireRiskAssessmentChecks(assessment, mustRecord) {
   }
 
   return checks;
+}
+
+function currentAssessmentCheck(assessment) {
+  return {
+    key: "fire_risk_assessment",
+    provision: "SSI 2006/456 regs 3, 8, 9",
+    status: assessment.review_overdue ? "attention" : "ok",
+    summary: assessment.review_overdue
+      ? `The current assessment was due for review on ${asDate(assessment.next_review_due)}.`
+      : `Assessment ${assessment.reference ?? assessment.id} is current, next review ${asDate(assessment.next_review_due) ?? "not set"}.`,
+    detail: {
+      id: assessment.id,
+      carried_out_on: asDate(assessment.carried_out_on),
+      recorded_on: asDate(assessment.recorded_on),
+      next_review_due: asDate(assessment.next_review_due),
+      significant_findings: Number(assessment.finding_count),
+    },
+  };
+}
+
+function missingAssessmentCheck(mustRecord) {
+  return {
+    key: "fire_risk_assessment",
+    provision: "Fire (Scotland) Act 2005 s.53; SSI 2006/456 regs 3, 8",
+    status: "missing",
+    summary: mustRecord
+      ? "No current fire risk assessment is recorded, and this premises is under a duty to record one."
+      : "No current fire risk assessment is recorded. The duty to carry one out applies whether or not it must be recorded.",
+  };
 }
 
 function recordingDutyCheck(premises, mustRecord) {

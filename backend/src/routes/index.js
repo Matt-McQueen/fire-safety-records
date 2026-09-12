@@ -114,19 +114,7 @@ export function buildApiRouter() {
   api.get("/", (req, res) => {
     res.json({
       data: {
-        resources: RESOURCES.map((resource) => ({
-          path: `/api${resource.path}`,
-          name: resource.name,
-          operations: resource.operations ?? ["list", "get", "create", "update", "remove"],
-          permissions: resource.permissions ?? {
-            read: "viewer",
-            create: "assessor",
-            update: "assessor",
-            remove: "manager",
-          },
-          filters: (resource.filters ?? []).map((filter) => filter.param),
-          sortable: Object.keys(resource.sortable ?? { id: "t.id" }),
-        })),
+        resources: RESOURCES.map(describeResource),
         extra: [
           { path: "/api/premises/:id/compliance", description: "Computed compliance position" },
           {
@@ -148,4 +136,20 @@ export function buildApiRouter() {
   });
 
   return api;
+}
+
+function describeResource(resource) {
+  return {
+    path: `/api${resource.path}`,
+    name: resource.name,
+    operations: resource.operations ?? ["list", "get", "create", "update", "remove"],
+    permissions: resource.permissions ?? {
+      read: "viewer",
+      create: "assessor",
+      update: "assessor",
+      remove: "manager",
+    },
+    filters: (resource.filters ?? []).map((filter) => filter.param),
+    sortable: Object.keys(resource.sortable ?? { id: "t.id" }),
+  };
 }

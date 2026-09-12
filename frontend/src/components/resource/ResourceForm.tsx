@@ -56,6 +56,11 @@ export function ResourceForm({
   );
 }
 
+// One case per FieldConfig kind, each returning its own control - a
+// discriminated-union dispatch, not accumulated branching. Splitting it into
+// one function per case would not lower the field type count this switches
+// on, only scatter it across the file.
+// fallow-ignore-next-line complexity
 function renderControl(
   field: FieldConfig,
   value: unknown,

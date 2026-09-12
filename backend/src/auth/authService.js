@@ -32,6 +32,11 @@ const DUMMY_HASH = await hashPassword(crypto.randomBytes(32).toString("hex"));
 // the response.
 const REJECTED = "Email or password is not recognised";
 
+// Kept as one block rather than split into named guards: the rejection order
+// and the dummy-hash comparison on an unknown email are a deliberate
+// timing-attack mitigation (see DUMMY_HASH above), and this is the one place
+// that sequence needs to be read and audited as a whole.
+// fallow-ignore-next-line complexity
 export async function login({ email, password, request }) {
   const { rows } = await query(
     `SELECT id, email, full_name, role, person_id, is_active, password_hash,

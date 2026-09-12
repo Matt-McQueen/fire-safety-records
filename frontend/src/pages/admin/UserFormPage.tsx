@@ -9,6 +9,11 @@ import { UserRoleAndStatusFields } from "./UserRoleAndStatusFields";
 import { PremisesAccessField } from "./PremisesAccessField";
 import { UserFormFooter } from "./UserFormFooter";
 
+// Already delegates every field group to its own component (UserIdentityFields,
+// UserRoleAndStatusFields, PremisesAccessField, UserFormFooter) and its state
+// to useUserForm; what remains is composition and this page's own
+// loading/not-found guards.
+// fallow-ignore-next-line complexity
 export default function UserFormPage() {
   const { id } = useParams();
   const isNew = id === "new" || id === undefined;
