@@ -137,7 +137,11 @@ jobs:
     env:
       DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
       RESTORE_URL: postgres://postgres:postgres@localhost:5432/restore_check
-      BACKUP_DIR: ${{ runner.temp }}/backups
+      # A literal path rather than ${{ runner.temp }}: the runner context is
+      # not available in a job-level env block, and using it there does not
+      # fail this job — it makes the whole workflow file invalid, so nothing
+      # runs at all and the pull request simply has no checks on it.
+      BACKUP_DIR: /tmp/fsr-backup-rehearsal
       # A real passphrase protects personal data. This one protects a database
       # that exists for four minutes and holds five fictional premises.
       BACKUP_PASSPHRASE: ci-only-backup-passphrase-not-a-secret
