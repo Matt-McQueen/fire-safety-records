@@ -59,10 +59,48 @@ function signingSecret() {
 
 const databaseUrl = required("DATABASE_URL");
 
+// Which deployment this is, and which commit it was built from.
+//
+// Both are reported by /api/health, which is what makes it possible to tell
+// whether a deploy has actually landed before running tests against it. A
+// platform that deploys asynchronously (Render, Vercel, Pages all do) will
+// happily serve the previous build for a minute or two after a push, and a
+// test suite that starts too early tests the old one and passes.
+//
+// Render and Vercel both inject the commit themselves; GIT_COMMIT is the
+// manual override for anywhere that does not. APP_ENVIRONMENT names the
+// deployment because NODE_ENV cannot: staging runs with NODE_ENV=production,
+// since it is a real deployment and should behave like one.
+const commit =
+  process.env.GIT_COMMIT ||
+  process.env.RENDER_GIT_COMMIT ||
+  process.env.VERCEL_GIT_COMMIT_SHA ||
+  null;
+
+// A deployment that has not been told its own name says so, rather than
+// borrowing NODE_ENV's.
+//
+// This used to fall back to NODE_ENV, and the staging API therefore reported
+// itself as "production": Vercel sets NODE_ENV=production for every deployment,
+// because it is one. The smoke suite caught it, but only because it was told to
+// expect "staging" — the same mistake on a host expecting "production" would
+// have passed, and a staging URL that answers to "production" is exactly the
+// confusion the field exists to prevent.
+//
+// Outside a deployment there is nothing to confuse: NODE_ENV is the honest
+// answer for a dev server or a test run.
+function environmentName() {
+  const named = process.env.APP_ENVIRONMENT?.trim();
+  if (named) return named;
+  return isProduction ? "unnamed" : process.env.NODE_ENV || "development";
+}
+
 export const config = {
   env: process.env.NODE_ENV || "development",
   isProduction,
   isTest,
+  environment: environmentName(),
+  commit,
   port: integer("PORT", 3001),
   databaseUrl,
 

@@ -22,6 +22,21 @@ test.beforeAll(async () => {
   NAME = `[${fixtures.marker}] Playwright Test Person`;
 });
 
+// Every visit this test makes to the list narrows it to its own record.
+//
+// The list is one page of 25 ordered by full_name, and pagination.spec.js
+// creates 26 people of its own in parallel - on a database whose people table
+// holds little else, "Pagination Person 01..26" fills page one and pushes
+// "Playwright Test Person" onto page two. CI found that the first time this
+// suite ran against a database that was not the shared dev one, where the
+// ordering happened to fall the other way. Searching by the record's own name
+// removes the dependence on what else the table holds, the same way
+// pagination.spec.js does for itself; `q` is the list's own search parameter
+// (pages/resource/useResourceListQuery.ts), so this is the narrowing a user
+// would do rather than a test-only back door.
+const listNarrowedToOwnRecord = (page) =>
+  page.goto(`/records/people?q=${encodeURIComponent(NAME)}`);
+
 test("the generic resource engine creates, searches, filters, edits and deletes a record", async ({ page }) => {
   await signIn(page, { email: fixtures.admin.email, password: fixtures.password });
 
@@ -37,12 +52,13 @@ test("the generic resource engine creates, searches, filters, edits and deletes 
   await page.getByRole("button", { name: "Create" }).click();
 
   await expect(page).toHaveURL("/records/people");
+  await listNarrowedToOwnRecord(page);
   await expect(page.getByRole("link", { name: NAME })).toBeVisible();
 
   // --- search ----------------------------------------------------------------
 
   const search = page.getByPlaceholder("Search…");
-  await search.fill(fixtures.marker);
+  await search.fill(NAME);
   await search.press("Enter");
   await expect(page.getByRole("link", { name: NAME })).toBeVisible();
 
@@ -51,7 +67,7 @@ test("the generic resource engine creates, searches, filters, edits and deletes 
   await expect(page.getByText("No records match the current filters.")).toBeVisible();
   await expect(page.getByRole("link", { name: NAME })).toHaveCount(0);
 
-  await page.goto("/records/people"); // reset search and any filter
+  await listNarrowedToOwnRecord(page); // clears the failed search above
 
   // --- filter ------------------------------------------------------------
 
@@ -77,6 +93,7 @@ test("the generic resource engine creates, searches, filters, edits and deletes 
   await page.getByRole("button", { name: "Save changes" }).click();
 
   await expect(page).toHaveURL("/records/people");
+  await listNarrowedToOwnRecord(page);
   const row = page.locator("tbody tr").filter({ hasText: NAME });
   await expect(row.getByText("Left", { exact: true })).toBeVisible();
 
@@ -87,5 +104,6 @@ test("the generic resource engine creates, searches, filters, edits and deletes 
   await page.getByRole("button", { name: "Delete" }).click();
 
   await expect(page).toHaveURL("/records/people");
+  await listNarrowedToOwnRecord(page);
   await expect(page.getByRole("link", { name: NAME })).toHaveCount(0);
 });

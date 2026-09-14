@@ -21,6 +21,11 @@ process.env.PG_POOL_MAX = process.env.PG_POOL_MAX ?? "5";
 
 import crypto from "node:crypto";
 import { after } from "node:test";
+import { assertDisposableDatabase } from "../src/db/protected-database.js";
+
+// Before anything opens a connection: this suite writes to whatever database
+// DATABASE_URL names, and that is a line in a .env file.
+assertDisposableDatabase("the backend integration suite");
 
 const { createApp } = await import("../src/app.js");
 const { pool } = await import("../src/db/db.js");
@@ -35,10 +40,30 @@ export { pool };
 // readable. Never used outside the test database.
 export const TEST_PASSWORD = "correct-horse-battery-staple-42";
 
-const app = createApp();
-const server = app.listen(0);
-await new Promise((resolve) => server.once("listening", resolve));
-const base = `http://localhost:${server.address().port}`;
+// Where the requests go. By default the app is started inside this process,
+// which is the fastest way to run the suite and the only way it can run
+// against a working copy that has not been deployed anywhere.
+//
+// Setting API_BASE_URL points the same suite at an already-deployed API
+// instead — that is how a staging deployment is tested, and it is worth
+// noting what changes when you do. The fixtures below are still inserted
+// straight into the database, so DATABASE_URL must point at *that*
+// deployment's database, not a local one. The NODE_ENV/SCRYPT_COST/rate limit
+// overrides at the top of this file only reach an app started here, so the
+// deployment needs its own RATE_LIMIT_LOGIN and RATE_LIMIT_API raised or the
+// suite will be throttled partway through. And it is a real deployment: never
+// point this at production, which is what smoke/ exists for instead.
+const remoteBase = (process.env.API_BASE_URL ?? "").replace(/\/+$/, "");
+
+let server = null;
+let base = remoteBase;
+
+if (!base) {
+  const app = createApp();
+  server = app.listen(0);
+  await new Promise((resolve) => server.once("listening", resolve));
+  base = `http://localhost:${server.address().port}`;
+}
 
 // Everything a run creates carries this, so cleanup can find it and concurrent
 // runs cannot delete each other's rows.
@@ -196,6 +221,6 @@ async function cleanup() {
 // Registered once per test file, so a file that throws still tidies up.
 after(async () => {
   await cleanup();
-  server.close();
+  server?.close();
   await pool.end();
 });

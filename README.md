@@ -364,6 +364,16 @@ must be **Other**, not the auto-detected **Express** — that preset applies
 its own zero-config entry-point discovery that finds `src/app.js` instead of
 `api/index.js`, and `app.js` has no default export, so every request 500s.
 
+**Name the deployment.** Set `APP_ENVIRONMENT=staging` in the Vercel project's
+Settings -> Environment Variables (for its Production environment - that
+project's production branch is `staging`), and `APP_ENVIRONMENT=production` on
+the Render service. It has to be the dashboard: current `vercel.json` has no
+property that defines environment variables, and `render.yaml` only reaches a
+service that is synced from the blueprint. Without it the API reports its
+environment as `unnamed` and the smoke suite refuses to confirm which
+environment answered - which is the point, since the alternative was staging
+quietly calling itself production.
+
 To reach the Vercel deployment, the Cloudflare Pages **Preview** environment
 (Settings → Variables and secrets, with the environment switched to
 *Preview*) has its own `API_ORIGIN` pointing at the Vercel URL, kept
@@ -372,11 +382,285 @@ at Render). The `staging` branch gets a stable alias —
 `staging.<project>.pages.dev` — rather than the usual per-commit preview
 URL, because Cloudflare Pages aliases every branch deployment that way.
 
-**Promoting a change**: merge or fast-forward `main` into `staging` (or vice
-versa once tested) and push; Render, Vercel and Cloudflare Pages all deploy
-from their respective branches automatically. The staging database is
-seeded with the same sample data as local development (`npm run seed`) and
-is safe to reset the same way — it holds no real records.
+**Promoting a change**: pushing a branch is all it takes — Render, Vercel and
+Cloudflare Pages each deploy from the branch they track. Which branch a change
+reaches when, and what has to be true before it reaches the next one, is the
+subject of *Making a change* below. The staging database is seeded with the
+same sample data as local development (`npm run seed`) and is safe to reset the
+same way — it holds no real records.
+
+## Making a change
+
+Every change takes the same route, and the route exists for one reason:
+production is never where a change is first tried. Two of the steps are a
+person's judgement rather than a command, and neither is skippable.
+
+1. **Branch off `staging`.** Nothing is committed to `main` or `staging`
+   directly.
+2. **Make the change.** A schema change is a migration file
+   (`backend/src/db/migrations/`), not SQL run by hand — see that directory's
+   README for why that distinction is the difference between a working staging
+   and a broken production.
+3. **Prove it locally**: `backend` `npm test`, `frontend` `npm run lint`,
+   `npm test` and `npm run build`, then `e2e` `npm test`, then Fallow over the
+   diff. All of it before the pull request, not after: a deployed environment
+   is a poor place to discover that something does not compile.
+4. **Open the pull request against `staging`**, with those results in the
+   description. CI runs the same checks on a throwaway database, and the pull
+   request waits for review. **Not against `main`** — `main` is what production
+   deploys from, so a pull request merged there is a change shipped to
+   production before staging has seen it.
+5. **Merge to `staging`.** Apply any migration to the staging database first
+   (`npm run migrate`), then let the push deploy. Wait for the deploy to land
+   before testing it:
+
+   ```bash
+   cd smoke
+   node wait-for-deploy.mjs --url https://staging.fire-safety-records.pages.dev --commit $(git rev-parse HEAD)
+   ```
+
+6. **Run the suites against staging**, which is the first run against a real
+   deployment rather than a working copy:
+
+   ```bash
+   cd backend && API_BASE_URL=https://<vercel-url> DATABASE_URL=<neon-url> npm run test:integration
+   cd e2e     && E2E_BASE_URL=https://staging.fire-safety-records.pages.dev DATABASE_URL=<neon-url> npm test
+   ```
+
+7. **Hand it over.** Staging is where the change is looked at by a person, not
+   where it is debugged.
+8. **Promote, once that person has approved it.** Take a backup first —
+   `cd backend && npm run backup` — *before* applying any migration to
+   production. Reverting a deploy reverts the code and does not reverse a
+   migration, and the runner will refuse a destructive one without a backup
+   recorded in the last 24 hours. Set any new environment variable
+   in Render, Vercel and the Pages project before the deploy lands, not after.
+   Then fast-forward `main` from `staging` and push.
+9. **Check production** with the read-only suite, and nothing else:
+
+   ```bash
+   cd smoke
+   SMOKE_WEB_URL=https://fire-safety-records.pages.dev SMOKE_ENVIRONMENT=production \
+   SMOKE_COMMIT=$(git rev-parse HEAD) npm test
+   ```
+
+   The `Smoke` workflow does steps 5 and 9 automatically on every push to
+   `staging` and `main`; run it by hand from the Actions tab against either
+   environment.
+
+**Never point `backend/tests` or `e2e/` at production.** Both create premises,
+people and accounts directly in the database and delete them afterwards, which
+is the right trade for a disposable environment and the wrong one for a live
+database holding personal data. `smoke/` is the production suite and it writes
+nothing.
+
+### If production breaks anyway
+
+Three things can be wrong, and they come back in this order. Do not skip to the
+last one: restoring a backup is the only step that loses data, and it is rarely
+the step that was needed.
+
+**1. The code.** Revert the merge on `main` and push; Render and Pages redeploy
+from it. Confirm what is actually live rather than assuming:
+
+```bash
+cd smoke
+node wait-for-deploy.mjs --url https://fire-safety-records.pages.dev --commit $(git rev-parse HEAD)
+SMOKE_WEB_URL=https://fire-safety-records.pages.dev SMOKE_ENVIRONMENT=production npm test
+```
+
+If the release contained no migration, that is the whole recovery and nothing
+has been lost.
+
+**2. The schema**, if the release did contain one. `npm run migrate:down`
+reverses the most recently applied migration using its `.down.sql`. Reversing
+an additive migration loses nothing that existed before it — dropping a column
+that migration added destroys only data that did not exist an hour ago — which
+is the entire reason migrations are required to be additive. A migration
+without a `.down.sql` cannot be stepped back, which is why writing one is a
+rule rather than a courtesy.
+
+**3. The data**, if something has actually destroyed it — a bad backfill, a
+wrong `UPDATE`, a column that went. This is where a backup comes in, and where
+the honest limits are:
+
+```bash
+cd backend
+npm run restore:check    # rehearse into a scratch database first, always
+```
+
+Restoring the production database from a dump taken before the promotion
+**loses every record written since that dump**. If the deploy was at 09:00 and
+the damage was noticed at 09:40, a restore returns the database to 09:00 and
+those forty minutes of real records are gone — and `audit_log` lives in the
+same database, so it goes too and cannot be used to reconstruct them. There is
+no configuration of this setup that avoids that trade: Supabase's Free plan
+takes no backups at all, and point-in-time recovery is a paid add-on on top of
+a paid plan. What exists here is the dump you took before the promotion, and
+the discipline that means you rarely need it.
+
+So the order matters. Revert the code, reverse the schema, and only restore
+data when something is genuinely gone.
+
+### Backups
+
+Supabase Free takes **no** backups — not daily, not point-in-time. The dumps
+this repository takes are the only copies that will ever exist.
+
+```bash
+cd backend
+npm run backup           # dump, verify, encrypt, record a manifest
+npm run restore:check    # restore the newest one into a scratch database
+```
+
+| | |
+|---|---|
+| `BACKUP_DIR` | Required, no default. Somewhere you control and back up, **outside the checkout** — this repository is public. |
+| `BACKUP_PASSPHRASE` | Encrypts the dump (AES-256-GCM). Lose it and the backup is gone; put it in your password manager first. |
+| `BACKUP_KEEP` | How many dumps to keep per database. Default 10. |
+| `RESTORE_URL` | For `restore:check`: an empty, throwaway database. It refuses a protected host. |
+
+`backup.mjs` needs the PostgreSQL client tools (`pg_dump`, `pg_restore`) on
+PATH, at a major version at or above the server's — they do not come with Node:
+
+```powershell
+winget install PostgreSQL.PostgreSQL.17 --interactive
+```
+
+Install the server alongside the tools rather than the tools alone. `restore:check`
+has to restore the dump into something, and without a local server a rehearsal
+has nowhere to go. `--interactive` is what lets you choose the superuser
+password, which you need for `RESTORE_URL`. The script checks the version before it starts
+and says what to install if it cannot.
+
+Two things it does that a bare `pg_dump` does not. It lists the dump back with
+`pg_restore --list` and refuses to call an empty file a backup. And it writes a
+manifest beside each dump — when, from which host, how many objects, the
+SHA-256 — which is what `npm run migrate` reads when it wants proof that a
+recent backup of *this* database exists before it will apply a destructive
+migration.
+
+**Rehearse it.** A dump nobody has restored is a file with a hopeful name.
+`npm run restore:check` puts the newest one into a scratch database and checks
+that every table in `schema.sql` came back, that the reference tables are not
+empty, and which migrations the dump predates. CI rehearses the same cycle on
+every pull request against its own throwaway database, so the scripts
+themselves cannot rot — but that proves the code, not your backups. Run it
+against a real dump from time to time.
+
+### What staging cannot tell you
+
+Staging is a separate environment, not a copy of production, and the
+differences are load-bearing:
+
+- **The API runs differently.** Production is one long-lived Node process on
+  Render; staging is Vercel serverless functions. Rate limits are held in
+  memory, so on staging they reset with every cold start and are effectively
+  per-instance. Anything depending on process lifetime — a cache, a timer,
+  pooled connections — behaves differently there.
+- **The database is a different product.** Neon on staging, Supabase on
+  production, with different connection limits and pooler behaviour.
+- **The data is sample data.** Volume-dependent problems do not appear.
+
+So a pass on staging is evidence, not proof, for those classes of change, and
+the smoke suite on production is what actually closes the loop.
+
+### Branch protection
+
+Everything above is convention until something enforces it: `main` and
+`staging` both deploy on push, so one push to either is a release that has been
+through nothing.
+
+**GitHub will not enforce it on this repository as it stands.** Branch
+protection and rulesets are both refused on a private repository on the Free
+plan — `403: Upgrade to GitHub Pro or make this repository public`. Two ways to
+get the real thing, and one that is not enforcement but catches the mistake:
+
+1. **Make the repository public.** Rulesets are then free. Nothing here is a
+   secret — `.env` has never been committed and the connection strings live in
+   the platforms' own dashboards — but it holds a real database's schema and is
+   yours to publish or not.
+2. **GitHub Pro.** The lock, at a monthly cost.
+3. **Neither, for now**: [`.githooks/pre-push`](.githooks/pre-push) refuses a
+   direct push to `main` or `staging` from this machine. Client-side, so it is
+   a seatbelt rather than a lock — but the one person who can push is the one
+   person it stops. Enable it once per clone:
+
+   ```bash
+   git config core.hooksPath .githooks
+   ```
+
+Once the repository is public or on Pro, one ruleset covers both branches:
+
+```bash
+gh api -X POST repos/:owner/:repo/rulesets --input .github/branch-ruleset.json
+```
+
+It requires a pull request and all three CI checks on both branches, forbids
+force pushes and deletion, and has no bypass actors — so it applies to the
+owner too, which is the point. `required_approving_review_count` is **0**, not
+1: GitHub does not let anyone approve their own pull request, so on a
+single-maintainer repository a count of 1 makes every branch unmergeable. The
+pull request and the green checks are still required; what is left out is a
+gate one person cannot pass. Raise it to 1 the moment there is a second person.
+
+### The smoke environments
+
+The `Smoke` workflow reads each environment's URLs and credentials from the
+GitHub Environment named for it (Settings → Environments). Both are configured:
+
+| | `staging` | `Production` |
+|---|---|---|
+| `SMOKE_WEB_URL` | `https://staging.fire-safety-records.pages.dev` | `https://fire-safety-records.pages.dev` |
+| `SMOKE_API_URL` | `https://fire-safety-records-api-staging.vercel.app` | `https://fire-safety-records-api.onrender.com` |
+
+Note the capital P: `Production` already existed, created by the Vercel
+integration. Workflows match environment names case-insensitively, so
+`environment: production` in `smoke.yml` resolves to it.
+
+The `SMOKE_EMAIL` and `SMOKE_PASSWORD` **secrets** are set for `Production`
+and not yet for `staging`. Without them the smoke suite skips its signed-in
+half — the endpoint index, the premises list, the compliance summary, the
+refused audit log and the refresh cookie's flags — and checks only what an
+anonymous caller can see.
+
+The account they name is a viewer with no premises granted, which can read
+nothing at all: the least valuable credential that still proves sign-in works.
+To create the staging one, with the Neon URI in the environment so it lands in
+the staging database rather than production's:
+
+```powershell
+cd C:\Database-API-Demo\backend
+$env:DATABASE_URL = "<the Neon connection string>"
+$pw = node -e "console.log(require('crypto').randomBytes(24).toString('base64url'))"
+node scripts/auth-setup.mjs --email smoke@example.com --name "Smoke check" --role viewer --password $pw
+gh secret set SMOKE_EMAIL --env staging --body "smoke@example.com"
+gh secret set SMOKE_PASSWORD --env staging --body $pw
+Remove-Item Env:\DATABASE_URL
+```
+
+Two things about that sequence are deliberate. It calls
+`scripts/auth-setup.mjs` directly rather than through `npm run auth:user`:
+**npm echoes the command it is about to run**, so a password passed as
+`--password` through npm ends up in the scrollback, in CI logs, and in
+anything else reading that output — which is exactly what the flag is there to
+avoid. And it passes `$pw` as a variable rather than a literal, so PowerShell's
+history file records the variable name and not its value.
+
+Omitting `--password` instead generates a strong one and prints it once, which
+is the right choice for an account a person will use; for one that only a
+machine ever signs in as, generating it into a variable means nobody ever has
+to see or store it.
+
+To check a smoke account works before trusting it in CI, run the suite by hand
+with the same credentials — it writes nothing:
+
+```powershell
+cd C:\Database-API-Demo\smoke
+$env:SMOKE_WEB_URL = "https://staging.fire-safety-records.pages.dev"
+$env:SMOKE_EMAIL = "smoke@example.com"; $env:SMOKE_PASSWORD = $pw
+npm test
+```
 
 ## Tests
 
@@ -421,6 +705,49 @@ browser — the login form, a premises created/edited/deleted through the UI,
 and confirming a lower role actually can't see or reach what it shouldn't.
 See [`e2e/README.md`](e2e/README.md) for how its fixtures work.
 
+```bash
+cd smoke
+SMOKE_WEB_URL=https://fire-safety-records.pages.dev npm test
+```
+
+Read-only checks against a deployed environment, and **the only suite that may
+be pointed at production**. It proves that the environment is up, is serving
+the build it is supposed to be, still refuses an unauthenticated read, and
+still hands back a `Secure`, `HttpOnly`, `SameSite=Strict` refresh cookie —
+the last of which no local run can check, because a Secure cookie is never
+sent over plain HTTP. It proves no business rule; that is settled before
+anything is promoted. See [`smoke/README.md`](smoke/README.md).
+
+### Running a suite against a deployment
+
+The two writing suites default to a working copy — the backend one starts the
+app inside the test process, and Playwright starts both dev servers itself.
+Either can be pointed at a deployed environment instead, which is what
+step 6 of *Making a change* does:
+
+| | |
+|---|---|
+| `API_BASE_URL` | Sends `backend/tests` at a deployed API instead of one started in-process. |
+| `E2E_BASE_URL` | Sends Playwright at a deployed frontend, and stops it starting any dev server. |
+
+Both still insert their fixtures straight into the database, so `DATABASE_URL`
+has to name *that* environment's database. The rate limit overrides the suites
+set for themselves only reach a process they started, so a deployment being
+tested this way needs its own `RATE_LIMIT_LOGIN`, `RATE_LIMIT_REFRESH` and
+`RATE_LIMIT_API` raised, or the run will be throttled partway through.
+
+Neither may be aimed at production. Both create and delete real records, and a
+run that dies partway leaves them behind.
+
+### In CI
+
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs all of the above
+except the smoke suite on every pull request, against a Postgres created for
+the run — built from `schema.sql` and then migrated, so a migration that
+contradicts the schema file fails there rather than on a database that
+matters. [`.github/workflows/smoke.yml`](.github/workflows/smoke.yml) waits
+for a push to `staging` or `main` to actually deploy, then smokes it.
+
 ## Status
 
 - [x] Database schema
@@ -434,6 +761,14 @@ See [`e2e/README.md`](e2e/README.md) for how its fixtures work.
 - [x] End-to-end tests (`e2e/`) — Playwright driving the rendered frontend
       against the real API and database, on top of the frontend's Vitest
       suite covering its logic in isolation
+- [x] Deployment safety net — migrations (`backend/src/db/migrations/`), the
+      read-only production suite (`smoke/`), a commit reported by
+      `/api/health` and stamped into the built frontend so a check can tell
+      which build answered it, and CI on every pull request
+- [x] Recovery — verified, encrypted backups with a rehearsed restore
+      (`npm run backup`, `npm run restore:check`), reversible migrations
+      (`npm run migrate:down`), and a runner that refuses a destructive
+      migration without an approval and a recent backup
 
 Not yet built out: bulk actions, and an in-app view of the machine-readable
 `GET /api/` index.

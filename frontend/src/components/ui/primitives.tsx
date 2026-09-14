@@ -46,7 +46,19 @@ export function Alert({
   children?: ReactNode;
 }) {
   return (
-    <div className={`rounded-md border px-4 py-3 text-sm ${ALERT_CLASSES[tone]}`}>
+    // An error appears in response to something the user just did, and a screen
+    // reader has no other way to know it arrived — role="alert" is what makes it
+    // announced. Only for errors: the role interrupts whatever is being read,
+    // which is right for a refusal and wrong for a standing note.
+    //
+    // It also gives a test somewhere to aim. An assertion that only searched the
+    // page for the refusal's wording was being satisfied by a field hint that
+    // began with the same sentence, so it passed whether the API had refused
+    // anything or not.
+    <div
+      role={tone === "error" ? "alert" : undefined}
+      className={`rounded-md border px-4 py-3 text-sm ${ALERT_CLASSES[tone]}`}
+    >
       {title && <p className="font-medium">{title}</p>}
       {children && <div className={title ? "mt-1" : ""}>{children}</div>}
     </div>

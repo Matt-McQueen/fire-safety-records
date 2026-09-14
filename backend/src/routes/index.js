@@ -5,6 +5,7 @@
 // endpoints outside it are /api/health and /api/auth/login and /refresh.
 
 import { Router } from "express";
+import { config } from "../config/env.js";
 import { authenticate, requireRole } from "../auth/middleware.js";
 import { authRouter } from "../auth/authRoutes.js";
 import { usersRouter } from "./users.js";
@@ -81,8 +82,18 @@ const RESOURCES = [
 export function buildApiRouter() {
   const api = Router();
 
+  // Reports which build is answering, not just that something is. `commit` is
+  // what a deployment check waits on: a push takes a minute or two to reach
+  // Render, Vercel and Pages, and until it has, this endpoint is the only way
+  // to tell the new build from the one it replaced. Null where the platform
+  // does not inject a commit (a local process, most of the time).
   api.get("/health", (req, res) => {
-    res.json({ status: "ok", service: "fire-safety-records-api" });
+    res.json({
+      status: "ok",
+      service: "fire-safety-records-api",
+      environment: config.environment,
+      commit: config.commit,
+    });
   });
 
   api.use("/auth", authRouter);
