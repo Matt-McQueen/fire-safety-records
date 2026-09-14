@@ -521,9 +521,16 @@ npm run restore:check    # restore the newest one into a scratch database
 | `RESTORE_URL` | For `restore:check`: an empty, throwaway database. It refuses a protected host. |
 
 `backup.mjs` needs the PostgreSQL client tools (`pg_dump`, `pg_restore`) on
-PATH, at a major version at or above the server's — they do not come with Node.
-On Windows the EnterpriseDB installer offers them on their own: choose Command
-Line Tools and skip the server. The script checks the version before it starts
+PATH, at a major version at or above the server's — they do not come with Node:
+
+```powershell
+winget install PostgreSQL.PostgreSQL.17 --interactive
+```
+
+Install the server alongside the tools rather than the tools alone. `restore:check`
+has to restore the dump into something, and without a local server a rehearsal
+has nowhere to go. `--interactive` is what lets you choose the superuser
+password, which you need for `RESTORE_URL`. The script checks the version before it starts
 and says what to install if it cannot.
 
 Two things it does that a bare `pg_dump` does not. It lists the dump back with
