@@ -342,6 +342,42 @@ Render backend so the refresh cookie stays first-party (see the comment in
 that file for why). Set the Pages project's `API_ORIGIN` env var to the
 Render service URL, and the backend's `CORS_ORIGINS` to the Pages URL.
 
+## Staging
+
+A second, fully separate environment for trying out changes before they
+reach production — its own database, its own API, its own frontend URL —
+all tracking the `staging` branch instead of `main`.
+
+| | Production | Staging |
+|---|---|---|
+| Database | Supabase | [Neon](https://neon.tech) (`fire-safety-records-staging` project) |
+| API | Render (`render.yaml`) | [Vercel](https://vercel.com) (`backend/vercel.json` + `backend/api/index.js`) |
+| Frontend | Cloudflare Pages, `main` branch | Cloudflare Pages, `staging` branch — `staging.fire-safety-records.pages.dev` |
+
+The API runs on Vercel rather than a second Render service because Render
+now requires a card on file even for its free plan; Vercel's free Hobby tier
+does not. `backend/api/index.js` wraps `createApp()` (already separate from
+the listener in `src/index.js`) as a Vercel serverless function, and
+`backend/vercel.json` rewrites every path to it so the app's own `/api`
+router sees the real incoming URL. The Vercel project's Framework Preset
+must be **Other**, not the auto-detected **Express** — that preset applies
+its own zero-config entry-point discovery that finds `src/app.js` instead of
+`api/index.js`, and `app.js` has no default export, so every request 500s.
+
+To reach the Vercel deployment, the Cloudflare Pages **Preview** environment
+(Settings → Variables and secrets, with the environment switched to
+*Preview*) has its own `API_ORIGIN` pointing at the Vercel URL, kept
+separate from the Production environment's `API_ORIGIN` (which still points
+at Render). The `staging` branch gets a stable alias —
+`staging.<project>.pages.dev` — rather than the usual per-commit preview
+URL, because Cloudflare Pages aliases every branch deployment that way.
+
+**Promoting a change**: merge or fast-forward `main` into `staging` (or vice
+versa once tested) and push; Render, Vercel and Cloudflare Pages all deploy
+from their respective branches automatically. The staging database is
+seeded with the same sample data as local development (`npm run seed`) and
+is safe to reset the same way — it holds no real records.
+
 ## Tests
 
 ```bash
