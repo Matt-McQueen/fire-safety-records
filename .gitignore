@@ -9,3 +9,10 @@ e2e/.auth/
 e2e/playwright-report/
 e2e/test-results/
 e2e/blob-report/
+
+# Database dumps, if BACKUP_DIR is ever pointed inside the checkout. It should
+# not be - see backend/scripts/backup.mjs - and this is the second line of
+# defence, because this repository is public.
+backups/
+*.dump
+*.dump.enc

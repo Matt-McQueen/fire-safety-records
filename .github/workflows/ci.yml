@@ -113,6 +113,63 @@ jobs:
         run: npm run test:integration
         working-directory: backend
 
+  backup:
+    name: Backup and restore rehearsal
+    runs-on: ubuntu-latest
+
+    # postgres:16 rather than 17 here, deliberately: pg_dump refuses a server
+    # newer than itself, and the runner's bundled client is 16. Matching them
+    # is the same constraint that applies to the machine taking the real
+    # backups - see backend/scripts/backup.mjs.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+        ports:
+          - 5432:5432
+
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
+      RESTORE_URL: postgres://postgres:postgres@localhost:5432/restore_check
+      BACKUP_DIR: ${{ runner.temp }}/backups
+      # A real passphrase protects personal data. This one protects a database
+      # that exists for four minutes and holds five fictional premises.
+      BACKUP_PASSPHRASE: ci-only-backup-passphrase-not-a-secret
+      JWT_SECRET: ci-only-signing-key-not-used-anywhere-else
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci
+        working-directory: backend
+
+      - name: Create the schema
+        run: |
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f src/db/schema.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f src/db/auth-schema.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "CREATE DATABASE restore_check"
+        working-directory: backend
+
+      # The rehearsal is the test. A dump nobody has restored is a file with a
+      # hopeful name, and the only way to know this one works is to put it back
+      # somewhere and look at what arrived.
+      - name: Take a backup
+        run: npm run backup
+        working-directory: backend
+      - name: Restore it and check what came back
+        run: npm run restore:check
+        working-directory: backend
+
   e2e:
     name: End to end
     runs-on: ubuntu-latest

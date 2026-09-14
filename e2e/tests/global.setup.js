@@ -44,8 +44,8 @@ const PASSWORD = "correct-horse-battery-staple-42";
 setup("provision test accounts and sign in", async ({ browser }) => {
   // This suite writes to whatever database DATABASE_URL names; the guard
   // refuses the ones that have been marked as not disposable. See
-  // backend/tests/protected-database.mjs.
-  const { assertDisposableDatabase } = await importBackendModule("tests/protected-database.mjs");
+  // backend/src/db/protected-database.js.
+  const { assertDisposableDatabase } = await importBackendModule("src/db/protected-database.js");
   assertDisposableDatabase("the end-to-end suite");
 
   const { pool } = await importBackendModule("src/db/pool.js");

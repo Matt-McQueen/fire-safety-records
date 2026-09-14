@@ -21,7 +21,7 @@ process.env.PG_POOL_MAX = process.env.PG_POOL_MAX ?? "5";
 
 import crypto from "node:crypto";
 import { after } from "node:test";
-import { assertDisposableDatabase } from "./protected-database.mjs";
+import { assertDisposableDatabase } from "../src/db/protected-database.js";
 
 // Before anything opens a connection: this suite writes to whatever database
 // DATABASE_URL names, and that is a line in a .env file.

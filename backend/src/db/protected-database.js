@@ -21,9 +21,12 @@
 // This is a guard, not a permission system — anyone who wants to get past it
 // can. The point is that getting past it has to be a decision.
 
-export function assertDisposableDatabase(suiteName) {
-  const url = process.env.DATABASE_URL ?? "";
-  const host = hostOf(url);
+// Answers the question without acting on it, so a script can ask whether it is
+// pointed at something that matters and decide for itself what that means — a
+// test suite refuses outright, while the migration runner uses it to decide
+// whether a fresh backup is required first.
+export function describeProtection(databaseUrl = process.env.DATABASE_URL ?? "") {
+  const host = hostOf(databaseUrl);
 
   const protectedHosts = (process.env.PROTECTED_DATABASE_HOSTS ?? "")
     .split(",")
@@ -33,16 +36,28 @@ export function assertDisposableDatabase(suiteName) {
   const named = host !== null && protectedHosts.some((entry) => host === entry || host.endsWith(entry));
   const flagged = (process.env.APP_ENVIRONMENT ?? "").trim().toLowerCase() === "production";
 
-  if (!named && !flagged) return;
+  return {
+    host,
+    isProtected: named || flagged,
+    reason: named
+      ? "it is listed in PROTECTED_DATABASE_HOSTS"
+      : flagged
+        ? "APP_ENVIRONMENT is set to production"
+        : null,
+  };
+}
+
+export function assertDisposableDatabase(suiteName) {
+  const { host, isProtected, reason } = describeProtection();
+
+  if (!isProtected) return;
 
   console.error(
     [
       "",
       `Refusing to run ${suiteName} against ${host ?? "this database"}.`,
       "",
-      named
-        ? "  It is listed in PROTECTED_DATABASE_HOSTS."
-        : "  APP_ENVIRONMENT is set to production.",
+      `  Refused because ${reason}.`,
       "",
       "  This suite writes to the database it is given. Point DATABASE_URL at a",
       "  local Postgres or at the staging database and run it again. To check a",

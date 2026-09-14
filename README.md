@@ -419,9 +419,11 @@ person's judgement rather than a command, and neither is skippable.
 
 7. **Hand it over.** Staging is where the change is looked at by a person, not
    where it is debugged.
-8. **Promote, once that person has approved it.** Snapshot the production
-   database *before* applying any migration to it — reverting a deploy reverts
-   the code and does not revert a migration. Set any new environment variable
+8. **Promote, once that person has approved it.** Take a backup first —
+   `cd backend && npm run backup` — *before* applying any migration to
+   production. Reverting a deploy reverts the code and does not reverse a
+   migration, and the runner will refuse a destructive one without a backup
+   recorded in the last 24 hours. Set any new environment variable
    in Render, Vercel and the Pages project before the deploy lands, not after.
    Then fast-forward `main` from `staging` and push.
 9. **Check production** with the read-only suite, and nothing else:
@@ -444,12 +446,90 @@ nothing.
 
 ### If production breaks anyway
 
-Revert the merge on `main` and push — Render and Pages redeploy from it — then
-re-run the smoke suite to confirm the revert landed. If the change included a
-migration, the revert does not undo it: that is what the snapshot taken in step
-8 is for, and it is why migrations expand before they contract (add a nullable
-column now, make it `NOT NULL` in a later release) so that the previous release
-keeps working against the new schema.
+Three things can be wrong, and they come back in this order. Do not skip to the
+last one: restoring a backup is the only step that loses data, and it is rarely
+the step that was needed.
+
+**1. The code.** Revert the merge on `main` and push; Render and Pages redeploy
+from it. Confirm what is actually live rather than assuming:
+
+```bash
+cd smoke
+node wait-for-deploy.mjs --url https://fire-safety-records.pages.dev --commit $(git rev-parse HEAD)
+SMOKE_WEB_URL=https://fire-safety-records.pages.dev SMOKE_ENVIRONMENT=production npm test
+```
+
+If the release contained no migration, that is the whole recovery and nothing
+has been lost.
+
+**2. The schema**, if the release did contain one. `npm run migrate:down`
+reverses the most recently applied migration using its `.down.sql`. Reversing
+an additive migration loses nothing that existed before it — dropping a column
+that migration added destroys only data that did not exist an hour ago — which
+is the entire reason migrations are required to be additive. A migration
+without a `.down.sql` cannot be stepped back, which is why writing one is a
+rule rather than a courtesy.
+
+**3. The data**, if something has actually destroyed it — a bad backfill, a
+wrong `UPDATE`, a column that went. This is where a backup comes in, and where
+the honest limits are:
+
+```bash
+cd backend
+npm run restore:check    # rehearse into a scratch database first, always
+```
+
+Restoring the production database from a dump taken before the promotion
+**loses every record written since that dump**. If the deploy was at 09:00 and
+the damage was noticed at 09:40, a restore returns the database to 09:00 and
+those forty minutes of real records are gone — and `audit_log` lives in the
+same database, so it goes too and cannot be used to reconstruct them. There is
+no configuration of this setup that avoids that trade: Supabase's Free plan
+takes no backups at all, and point-in-time recovery is a paid add-on on top of
+a paid plan. What exists here is the dump you took before the promotion, and
+the discipline that means you rarely need it.
+
+So the order matters. Revert the code, reverse the schema, and only restore
+data when something is genuinely gone.
+
+### Backups
+
+Supabase Free takes **no** backups — not daily, not point-in-time. The dumps
+this repository takes are the only copies that will ever exist.
+
+```bash
+cd backend
+npm run backup           # dump, verify, encrypt, record a manifest
+npm run restore:check    # restore the newest one into a scratch database
+```
+
+| | |
+|---|---|
+| `BACKUP_DIR` | Required, no default. Somewhere you control and back up, **outside the checkout** — this repository is public. |
+| `BACKUP_PASSPHRASE` | Encrypts the dump (AES-256-GCM). Lose it and the backup is gone; put it in your password manager first. |
+| `BACKUP_KEEP` | How many dumps to keep per database. Default 10. |
+| `RESTORE_URL` | For `restore:check`: an empty, throwaway database. It refuses a protected host. |
+
+`backup.mjs` needs the PostgreSQL client tools (`pg_dump`, `pg_restore`) on
+PATH, at a major version at or above the server's — they do not come with Node.
+On Windows the EnterpriseDB installer offers them on their own: choose Command
+Line Tools and skip the server. The script checks the version before it starts
+and says what to install if it cannot.
+
+Two things it does that a bare `pg_dump` does not. It lists the dump back with
+`pg_restore --list` and refuses to call an empty file a backup. And it writes a
+manifest beside each dump — when, from which host, how many objects, the
+SHA-256 — which is what `npm run migrate` reads when it wants proof that a
+recent backup of *this* database exists before it will apply a destructive
+migration.
+
+**Rehearse it.** A dump nobody has restored is a file with a hopeful name.
+`npm run restore:check` puts the newest one into a scratch database and checks
+that every table in `schema.sql` came back, that the reference tables are not
+empty, and which migrations the dump predates. CI rehearses the same cycle on
+every pull request against its own throwaway database, so the scripts
+themselves cannot rot — but that proves the code, not your backups. Run it
+against a real dump from time to time.
 
 ### What staging cannot tell you
 
@@ -668,6 +748,10 @@ for a push to `staging` or `main` to actually deploy, then smokes it.
       read-only production suite (`smoke/`), a commit reported by
       `/api/health` and stamped into the built frontend so a check can tell
       which build answered it, and CI on every pull request
+- [x] Recovery — verified, encrypted backups with a rehearsed restore
+      (`npm run backup`, `npm run restore:check`), reversible migrations
+      (`npm run migrate:down`), and a runner that refuses a destructive
+      migration without an approval and a recent backup
 
 Not yet built out: bulk actions, and an in-app view of the machine-readable
 `GET /api/` index.

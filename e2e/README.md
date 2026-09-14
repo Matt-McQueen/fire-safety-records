@@ -33,7 +33,7 @@ how a staging deployment is tested. Nothing is started locally in that case,
 and `DATABASE_URL` must point at that deployment's own database, since the
 fixtures below are inserted directly into it. Never point it at production:
 this suite writes. `smoke/` is the read-only suite for a live environment, and
-`backend/tests/protected-database.mjs` refuses a database named in
+`backend/src/db/protected-database.js` refuses a database named in
 `PROTECTED_DATABASE_HOSTS` before either suite reaches it.
 
 `playwright.config.js` starts `backend` and `frontend` with `npm run dev`
