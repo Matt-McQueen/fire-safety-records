@@ -533,7 +533,7 @@ To create the staging one, with the Neon URI in the environment so it lands in
 the staging database rather than production's:
 
 ```powershell
-cd C:\Database-API-Demoackend
+cd C:\Database-API-Demo\backend
 $env:DATABASE_URL = "<the Neon connection string>"
 $pw = node -e "console.log(require('crypto').randomBytes(24).toString('base64url'))"
 node scripts/auth-setup.mjs --email smoke@example.com --name "Smoke check" --role viewer --password $pw
