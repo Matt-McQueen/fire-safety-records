@@ -521,24 +521,49 @@ Note the capital P: `Production` already existed, created by the Vercel
 integration. Workflows match environment names case-insensitively, so
 `environment: production` in `smoke.yml` resolves to it.
 
-What is not configured, because it needs an account and a password: the
-`SMOKE_EMAIL` and `SMOKE_PASSWORD` **secrets**. Without them the smoke suite
-skips its signed-in half — the endpoint index, the premises list, the
-compliance summary, the refused audit log and the refresh cookie's flags — and
-checks only what an anonymous caller can see. Create a viewer account with no
-premises granted in each environment's database and store its credentials:
+The `SMOKE_EMAIL` and `SMOKE_PASSWORD` **secrets** are set for `Production`
+and not yet for `staging`. Without them the smoke suite skips its signed-in
+half — the endpoint index, the premises list, the compliance summary, the
+refused audit log and the refresh cookie's flags — and checks only what an
+anonymous caller can see.
 
-```bash
-cd backend
-npm run auth:user -- --email smoke@example.com --role viewer   # prints the password once
-gh secret set SMOKE_EMAIL --env Production --body "smoke@example.com"
-gh secret set SMOKE_PASSWORD --env Production                  # prompts, nothing echoed
+The account they name is a viewer with no premises granted, which can read
+nothing at all: the least valuable credential that still proves sign-in works.
+To create the staging one, with the Neon URI in the environment so it lands in
+the staging database rather than production's:
+
+```powershell
+cd C:\Database-API-Demoackend
+$env:DATABASE_URL = "<the Neon connection string>"
+$pw = node -e "console.log(require('crypto').randomBytes(24).toString('base64url'))"
+node scripts/auth-setup.mjs --email smoke@example.com --name "Smoke check" --role viewer --password $pw
+gh secret set SMOKE_EMAIL --env staging --body "smoke@example.com"
+gh secret set SMOKE_PASSWORD --env staging --body $pw
+Remove-Item Env:\DATABASE_URL
 ```
 
-Repeat against the staging database (`$env:DATABASE_URL` set to the Neon URI
-first, in PowerShell) with `--env staging`. A viewer with no premises granted
-can read nothing at all, which makes these the least valuable credentials that
-still prove sign-in works.
+Two things about that sequence are deliberate. It calls
+`scripts/auth-setup.mjs` directly rather than through `npm run auth:user`:
+**npm echoes the command it is about to run**, so a password passed as
+`--password` through npm ends up in the scrollback, in CI logs, and in
+anything else reading that output — which is exactly what the flag is there to
+avoid. And it passes `$pw` as a variable rather than a literal, so PowerShell's
+history file records the variable name and not its value.
+
+Omitting `--password` instead generates a strong one and prints it once, which
+is the right choice for an account a person will use; for one that only a
+machine ever signs in as, generating it into a variable means nobody ever has
+to see or store it.
+
+To check a smoke account works before trusting it in CI, run the suite by hand
+with the same credentials — it writes nothing:
+
+```powershell
+cd C:\Database-API-Demo\smoke
+$env:SMOKE_WEB_URL = "https://staging.fire-safety-records.pages.dev"
+$env:SMOKE_EMAIL = "smoke@example.com"; $env:SMOKE_PASSWORD = $pw
+npm test
+```
 
 ## Tests
 
