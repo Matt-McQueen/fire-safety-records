@@ -23,7 +23,12 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  NODE_VERSION: "22"
+  # 24, not the 22 that package.json's engines allows. backend/tests/unit uses
+  # node:test's module mocking with specifiers relative to the test file, which
+  # Node 22 does not resolve the same way: four errorHandler tests fail there
+  # and pass on 24. The application itself runs on either; this pin is about
+  # the test runner, and matches the version the suites are developed against.
+  NODE_VERSION: "24"
 
 jobs:
   frontend:
