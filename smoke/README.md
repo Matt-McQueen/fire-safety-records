@@ -65,8 +65,23 @@ node wait-for-deploy.mjs --url https://staging.fire-safety-records.pages.dev --c
 ```
 
 It polls `/api/health` and the `<meta name="app-commit">` stamped into
-`index.html` until both report that commit, then exits 0. Pass `--url` more
-than once to wait on the API origin and the public origin together. It gives
-up after ten minutes: a build that *failed* will serve the previous commit
-indefinitely, so check the platform's deploy log before assuming the check is
-at fault.
+`index.html` until both report that commit **three times running**, then exits
+0. Pass `--url` more than once to wait on the API origin and the public origin
+together. It gives up after ten minutes: a build that *failed* will serve the
+previous commit indefinitely, so check the platform's deploy log before
+assuming the check is at fault.
+
+The repeated agreement is the point. A rollout is eventually consistent —
+Cloudflare Pages serves from many edge nodes and they do not switch together,
+so one request can be answered by a node that has the new build and the next by
+one that has not. An earlier version of this script accepted a single
+successful probe, and on one promotion it announced "every origin is serving
+the expected commit" seconds before the smoke suite found the frontend still on
+the previous one. Neither observation was wrong; the gate was. Three
+confirmations spaced ten seconds apart is not proof either — nothing short of
+asking every node is — but it is the difference between catching a rollout
+mid-flight and catching it by luck. `--confirmations` tunes it.
+
+For the same reason the suite's two commit assertions retry for a minute before
+failing, while every other assertion in it fails on the first wrong answer:
+those are asserting behaviour, where one wrong answer is one too many.
