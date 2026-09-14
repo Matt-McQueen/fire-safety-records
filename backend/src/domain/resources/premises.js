@@ -274,7 +274,7 @@ const ROLES = [
   "competent_assistance",
   "fire_warden",
   "duty_holder",
-  "other",
+  "assessor",
 ];
 
 const safetyRoleFields = {

@@ -76,13 +76,13 @@ const people: ResourceConfig = {
 
 // --- safety roles --------------------------------------------------------
 
-const SAFETY_ROLES = ["nominated_firefighting", "competent_assistance", "fire_warden", "duty_holder", "other"];
+const SAFETY_ROLES = ["nominated_firefighting", "competent_assistance", "fire_warden", "duty_holder", "assessor"];
 const SAFETY_ROLE_LABELS: Record<string, string> = {
   nominated_firefighting: "Nominated firefighting",
   competent_assistance: "Competent assistance",
   fire_warden: "Fire warden",
   duty_holder: "Duty holder",
-  other: "Other",
+  assessor: "Assessor",
 };
 
 const safetyRoles: ResourceConfig = {
