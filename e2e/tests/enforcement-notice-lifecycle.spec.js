@@ -61,13 +61,20 @@ test("an alterations notice triggers the duty to record while in force, and stop
 
   page.once("dialog", (dialog) => dialog.accept());
   await page.getByRole("button", { name: "Delete" }).click();
-  await expect(page.getByText(/still in force/)).toBeVisible();
+  await expect(page.getByRole("alert")).toContainText(/still in force/);
 
   // --- marking it no longer in force needs to say why ----------------------
 
   await page.getByRole("checkbox").uncheck(); // in_force
   await page.getByRole("button", { name: "Save changes" }).click();
-  await expect(page.getByText(/A notice no longer in force must record why/)).toBeVisible();
+  // Scoped to the alert, not the page. configs.ts gives withdrawn_on a hint
+  // beginning with the same sentence as the API's refusal, so searching the
+  // whole page matched the hint - which is on screen whether the save was
+  // refused or not, and made this assertion pass for the wrong reason until
+  // the two happened to render together and Playwright called it ambiguous.
+  await expect(page.getByRole("alert")).toContainText(
+    /A notice no longer in force must record why/,
+  );
 
   await page.getByLabel("Withdrawn on").fill(new Date().toISOString().slice(0, 10));
   await page.getByRole("button", { name: "Save changes" }).click();
