@@ -28,6 +28,29 @@ describe("Alert", () => {
     render(<Alert>Just a message</Alert>);
     expect(screen.getByText("Just a message")).toBeInTheDocument();
   });
+
+  it("gives only errors the alert role", () => {
+    // role="alert" interrupts whatever a screen reader is currently saying,
+    // which is right for a refusal and wrong for a standing note - so the
+    // quieter tones do not claim it.
+    //
+    // It is also the handle the end-to-end suite aims at. An assertion that
+    // searched the whole page for a refusal's wording was being satisfied by a
+    // field hint beginning with the same sentence, so it passed whether the API
+    // had refused anything or not.
+    render(
+      <>
+        <Alert tone="error" title="Refused" />
+        <Alert tone="warning" title="Careful" />
+        <Alert tone="info" title="For information" />
+        <Alert tone="success" title="Saved" />
+      </>,
+    );
+
+    const alerts = screen.getAllByRole("alert");
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0]).toHaveTextContent("Refused");
+  });
 });
 
 describe("ApiErrorAlert", () => {
@@ -39,6 +62,13 @@ describe("ApiErrorAlert", () => {
   it("renders a plain Error's message", () => {
     render(<ApiErrorAlert error={new Error("Something broke")} />);
     expect(screen.getByText("Something broke")).toBeInTheDocument();
+  });
+
+  it("is reachable by role, which is how the end-to-end suite finds a refusal", () => {
+    render(<ApiErrorAlert error={new Error("A notice no longer in force must record why")} />);
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "A notice no longer in force must record why",
+    );
   });
 
   it("renders an ApiError's per-field messages", () => {
