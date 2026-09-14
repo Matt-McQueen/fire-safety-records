@@ -139,6 +139,11 @@ test("a manager may delete a draft assessment or a piece of equipment, but not a
   await page.getByRole("button", { name: "+ Add finding" }).click();
   await page.getByLabel("Finding").fill("Fire exit signage missing above the loading bay door.");
   await page.getByRole("button", { name: "Add", exact: true }).click();
+
+  // See fra-lifecycle.spec.js: the text alone is matched by the textarea this
+  // test just typed into, so the form closing is what actually says the finding
+  // was saved.
+  await expect(page.getByRole("button", { name: "Add", exact: true })).toHaveCount(0);
   await expect(page.getByText("Fire exit signage missing")).toBeVisible();
 
   await page.getByRole("button", { name: "Publish" }).click();

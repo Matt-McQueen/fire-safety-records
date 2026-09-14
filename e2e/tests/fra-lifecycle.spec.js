@@ -43,6 +43,15 @@ test("a draft assessment is published, then superseded by its review", async ({ 
   await page.getByRole("button", { name: "+ Add finding" }).click();
   await page.getByLabel("Finding").fill("Escape route in the warehouse aisle partially obstructed by stored pallets.");
   await page.getByRole("button", { name: "Add", exact: true }).click();
+
+  // The form closing is the only thing that says the server accepted it: the
+  // child form closes in onSuccess and not before. Waiting on the text alone
+  // proved nothing - "Finding" is a textarea, so getByText matched the words
+  // this test had just typed into it, and the assertion passed before the
+  // request had even left. Publish then raced the finding's POST and the API
+  // refused it, correctly, for having no findings. Against localhost the POST
+  // won that race every time; against staging it took 1.1s and lost.
+  await expect(page.getByRole("button", { name: "Add", exact: true })).toHaveCount(0);
   await expect(page.getByText("Escape route in the warehouse aisle")).toBeVisible();
 
   await page.getByRole("button", { name: "Publish" }).click();
