@@ -470,28 +470,75 @@ the smoke suite on production is what actually closes the loop.
 
 ### Branch protection
 
-The workflow above is convention until GitHub enforces it; one push to `main`
-defeats all of it. Required once per repository:
+Everything above is convention until something enforces it: `main` and
+`staging` both deploy on push, so one push to either is a release that has been
+through nothing.
+
+**GitHub will not enforce it on this repository as it stands.** Branch
+protection and rulesets are both refused on a private repository on the Free
+plan — `403: Upgrade to GitHub Pro or make this repository public`. Two ways to
+get the real thing, and one that is not enforcement but catches the mistake:
+
+1. **Make the repository public.** Rulesets are then free. Nothing here is a
+   secret — `.env` has never been committed and the connection strings live in
+   the platforms' own dashboards — but it holds a real database's schema and is
+   yours to publish or not.
+2. **GitHub Pro.** The lock, at a monthly cost.
+3. **Neither, for now**: [`.githooks/pre-push`](.githooks/pre-push) refuses a
+   direct push to `main` or `staging` from this machine. Client-side, so it is
+   a seatbelt rather than a lock — but the one person who can push is the one
+   person it stops. Enable it once per clone:
+
+   ```bash
+   git config core.hooksPath .githooks
+   ```
+
+Once the repository is public or on Pro, one ruleset covers both branches:
 
 ```bash
-gh api -X PUT repos/:owner/:repo/branches/main/protection \
-  -f 'required_pull_request_reviews[required_approving_review_count]=1' \
-  -f 'required_status_checks[strict]=true' \
-  -f 'required_status_checks[contexts][]=Frontend — types, unit tests, build' \
-  -f 'required_status_checks[contexts][]=Backend — unit and integration tests' \
-  -f 'required_status_checks[contexts][]=End to end' \
-  -F 'enforce_admins=true' -F 'restrictions=null'
+gh api -X POST repos/:owner/:repo/rulesets --input .github/branch-ruleset.json
 ```
 
-Run the same for `staging`. `enforce_admins` matters: the account that owns
-this repository is also the one most likely to push to it out of habit.
+It requires a pull request and all three CI checks on both branches, forbids
+force pushes and deletion, and has no bypass actors — so it applies to the
+owner too, which is the point. `required_approving_review_count` is **0**, not
+1: GitHub does not let anyone approve their own pull request, so on a
+single-maintainer repository a count of 1 makes every branch unmergeable. The
+pull request and the green checks are still required; what is left out is a
+gate one person cannot pass. Raise it to 1 the moment there is a second person.
 
-The `Smoke` workflow reads each environment's URLs and credentials from a
-GitHub Environment (Settings → Environments) named `staging` and `production`:
-variables `SMOKE_WEB_URL` and `SMOKE_API_URL`, secrets `SMOKE_EMAIL` and
-`SMOKE_PASSWORD` for a viewer-role account with no premises granted. Adding a
-required reviewer to the `production` environment turns the promotion itself
-into a second approval.
+### The smoke environments
+
+The `Smoke` workflow reads each environment's URLs and credentials from the
+GitHub Environment named for it (Settings → Environments). Both are configured:
+
+| | `staging` | `Production` |
+|---|---|---|
+| `SMOKE_WEB_URL` | `https://staging.fire-safety-records.pages.dev` | `https://fire-safety-records.pages.dev` |
+| `SMOKE_API_URL` | `https://fire-safety-records-api-staging.vercel.app` | `https://fire-safety-records-api.onrender.com` |
+
+Note the capital P: `Production` already existed, created by the Vercel
+integration. Workflows match environment names case-insensitively, so
+`environment: production` in `smoke.yml` resolves to it.
+
+What is not configured, because it needs an account and a password: the
+`SMOKE_EMAIL` and `SMOKE_PASSWORD` **secrets**. Without them the smoke suite
+skips its signed-in half — the endpoint index, the premises list, the
+compliance summary, the refused audit log and the refresh cookie's flags — and
+checks only what an anonymous caller can see. Create a viewer account with no
+premises granted in each environment's database and store its credentials:
+
+```bash
+cd backend
+npm run auth:user -- --email smoke@example.com --role viewer   # prints the password once
+gh secret set SMOKE_EMAIL --env Production --body "smoke@example.com"
+gh secret set SMOKE_PASSWORD --env Production                  # prompts, nothing echoed
+```
+
+Repeat against the staging database (`$env:DATABASE_URL` set to the Neon URI
+first, in PowerShell) with `--env staging`. A viewer with no premises granted
+can read nothing at all, which makes these the least valuable credentials that
+still prove sign-in works.
 
 ## Tests
 
