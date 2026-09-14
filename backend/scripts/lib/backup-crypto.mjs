@@ -105,12 +105,6 @@ export async function decryptFile(sourcePath, destinationPath, passphrase) {
   await new Promise((resolve, reject) => destination.end((error) => (error ? reject(error) : resolve())));
 }
 
-export function isEncryptedDump(header) {
-  return Buffer.isBuffer(header) && header.subarray(0, MAGIC.length).equals(MAGIC);
-}
-
-export const ENCRYPTED_HEADER_LENGTH = HEADER_LENGTH;
-
 async function readRange(path, start, end) {
   const chunks = [];
   for await (const chunk of createReadStream(path, { start, end })) chunks.push(chunk);
