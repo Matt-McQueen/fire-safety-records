@@ -1,0 +1,52 @@
+#!/bin/sh
+# Refuses a direct push to main or staging.
+#
+# Both branches deploy on push — staging to Vercel and Pages, main to Render
+# and Pages — so a push to either is a release, and a release is supposed to
+# have been through a pull request and CI first. GitHub would normally enforce
+# that, but branch protection and rulesets are both refused on a private
+# repository on the Free plan (see README.md, "Branch protection"), so this is
+# the substitute: client-side, on this machine, and therefore a seatbelt rather
+# than a lock.
+#
+# Enable it once per clone:
+#
+#   git config core.hooksPath .githooks
+#
+# And when a direct push is genuinely what you want — reverting a broken
+# production deploy is the honest case — say so:
+#
+#   ALLOW_DIRECT_PUSH=1 git push origin main
+
+if [ "$ALLOW_DIRECT_PUSH" = "1" ]; then
+  exit 0
+fi
+
+# stdin carries one line per ref being pushed:
+#   <local ref> <local sha> <remote ref> <remote sha>
+while read -r _local_ref _local_sha remote_ref _remote_sha; do
+  case "$remote_ref" in
+    refs/heads/main | refs/heads/staging)
+      branch=${remote_ref#refs/heads/}
+      cat >&2 <<EOF
+
+Refusing to push straight to $branch.
+
+  $branch deploys on push, so this would be a release that has not been
+  through a pull request or CI. Open one against staging instead:
+
+    git push -u origin <your-branch>
+    gh pr create --base staging
+
+  If a direct push is genuinely what you want (reverting a broken production
+  deploy is the honest case):
+
+    ALLOW_DIRECT_PUSH=1 git push origin $branch
+
+EOF
+      exit 1
+      ;;
+  esac
+done
+
+exit 0

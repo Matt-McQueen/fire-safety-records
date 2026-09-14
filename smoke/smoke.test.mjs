@@ -1,0 +1,261 @@
+// Smoke tests for a deployed environment — the only suite that may be pointed
+// at production.
+//
+// The distinction from backend/tests and e2e/ is not thoroughness, it is
+// consequence. Those two create premises, people and accounts directly in the
+// database and delete them afterwards; run either against production and a
+// crashed process or a lost connection leaves real-looking records behind, in
+// a database that holds personal data. Nothing here writes anything. Every
+// request is a GET, apart from the sign-in that the authorised checks need and
+// the sign-out that gives the session back at the end.
+//
+// What it is for: confirming that the environment a deploy just landed on is
+// actually serving that build, that the pieces are wired to each other, and
+// that the access controls are still in force. It is a deployment check, not a
+// test of the business rules — those are proved before anything is promoted.
+//
+// Configuration, all through the environment:
+//
+//   SMOKE_WEB_URL      required. The public origin, e.g.
+//                      https://fire-safety-records.pages.dev. Everything is
+//                      driven through this rather than the API's own hostname,
+//                      because it is the path a real user takes: the Pages
+//                      function proxying /api/* is part of what has to work.
+//   SMOKE_API_URL      optional. The API's own origin (Render, Vercel). When
+//                      set, its health is checked directly too, which
+//                      separates "the API is down" from "the proxy in front of
+//                      it is misconfigured".
+//   SMOKE_EMAIL        optional, with SMOKE_PASSWORD. A viewer-role account.
+//   SMOKE_PASSWORD     Without them the signed-in checks skip rather than fail,
+//                      and roughly half the value of the suite goes with them.
+//   SMOKE_COMMIT       optional. The commit this deploy was meant to be. When
+//                      set, both the API and the frontend must report it, which
+//                      is what stops a suite from passing against the build it
+//                      was supposed to replace.
+//   SMOKE_ENVIRONMENT  optional. "production" or "staging"; the API must agree.
+//                      Worth setting for production runs: it is the check that
+//                      catches a URL pointed at the wrong environment.
+
+import test from "node:test";
+import assert from "node:assert/strict";
+
+const webUrl = trimSlash(process.env.SMOKE_WEB_URL);
+const apiUrl = trimSlash(process.env.SMOKE_API_URL);
+const email = process.env.SMOKE_EMAIL;
+const password = process.env.SMOKE_PASSWORD;
+const expectedCommit = process.env.SMOKE_COMMIT?.trim();
+const expectedEnvironment = process.env.SMOKE_ENVIRONMENT?.trim();
+
+if (!webUrl) {
+  console.error("SMOKE_WEB_URL is not set. See smoke/README.md.");
+  process.exit(1);
+}
+
+// Skipping is deliberate rather than a failure: a freshly created environment
+// may not have a smoke account yet, and a suite that cannot run at all is
+// worse than one that says which half of it ran. CI names the skip in its
+// output, so a permanently half-run suite is visible rather than quiet.
+const skipUnauthenticated =
+  email && password
+    ? false
+    : "SMOKE_EMAIL and SMOKE_PASSWORD are not set, so the signed-in checks cannot run";
+
+function trimSlash(value) {
+  return (value ?? "").trim().replace(/\/+$/, "");
+}
+
+// Compared by prefix, so a short SHA works as the expected value.
+function commitMatches(reported, expected) {
+  if (!reported) return false;
+  const [longer, shorter] =
+    reported.length >= expected.length ? [reported, expected] : [expected, reported];
+  return longer.startsWith(shorter);
+}
+
+async function getJson(url, options = {}) {
+  const response = await fetch(url, options);
+  const text = await response.text();
+  let body = null;
+  if (text) {
+    try {
+      body = JSON.parse(text);
+    } catch {
+      body = text;
+    }
+  }
+  return { status: response.status, body, headers: response.headers, text };
+}
+
+// --- the deployment is up, and is the build we think it is ------------------
+
+test("the API answers through the public origin", async () => {
+  const { status, body } = await getJson(`${webUrl}/api/health`);
+  assert.equal(status, 200, `GET ${webUrl}/api/health returned ${status}`);
+  assert.equal(body?.status, "ok");
+  assert.equal(body?.service, "fire-safety-records-api");
+});
+
+test(
+  "the API answers on its own origin",
+  { skip: apiUrl ? false : "SMOKE_API_URL is not set" },
+  async () => {
+    const { status, body } = await getJson(`${apiUrl}/api/health`);
+    assert.equal(status, 200, `GET ${apiUrl}/api/health returned ${status}`);
+    assert.equal(body?.status, "ok");
+  },
+);
+
+test(
+  "the API is the environment this run is aimed at",
+  { skip: expectedEnvironment ? false : "SMOKE_ENVIRONMENT is not set" },
+  async () => {
+    const { body } = await getJson(`${webUrl}/api/health`);
+    assert.equal(
+      body?.environment,
+      expectedEnvironment,
+      `expected the ${expectedEnvironment} API, got ${body?.environment}`,
+    );
+  },
+);
+
+test(
+  "the API is running the commit being tested",
+  { skip: expectedCommit ? false : "SMOKE_COMMIT is not set" },
+  async () => {
+    const { body } = await getJson(`${webUrl}/api/health`);
+    assert.ok(
+      commitMatches(body?.commit, expectedCommit),
+      `the API reports commit ${body?.commit ?? "(none)"}, expected ${expectedCommit}. ` +
+        "The deploy has probably not finished; see smoke/wait-for-deploy.mjs.",
+    );
+  },
+);
+
+test("the frontend is served", async () => {
+  const response = await fetch(webUrl);
+  assert.equal(response.status, 200, `GET ${webUrl} returned ${response.status}`);
+  assert.match(response.headers.get("content-type") ?? "", /text\/html/);
+
+  const html = await response.text();
+  assert.match(html, /<div id="root">/, "the app's mount point is missing from the served HTML");
+  assert.match(html, /<script type="module"/, "the built bundle is not referenced");
+});
+
+test(
+  "the frontend is the commit being tested",
+  { skip: expectedCommit ? false : "SMOKE_COMMIT is not set" },
+  async () => {
+    const html = await (await fetch(webUrl)).text();
+    const reported = html.match(/<meta name="app-commit" content="([^"]*)"/)?.[1];
+    assert.ok(
+      commitMatches(reported, expectedCommit),
+      `the frontend reports commit ${reported || "(none)"}, expected ${expectedCommit}. ` +
+        "Pages deploys separately from the API, so the two can legitimately differ " +
+        "for a minute — and must not still differ once both have finished.",
+    );
+  },
+);
+
+// --- the access controls are still in force ---------------------------------
+
+test("records cannot be read without a token", async () => {
+  const { status, body } = await getJson(`${webUrl}/api/premises`);
+  assert.equal(status, 401, `unauthenticated GET /api/premises returned ${status}`);
+  assert.ok(!body?.data, "an unauthenticated request came back with data");
+});
+
+test("the audit log cannot be read without a token", async () => {
+  const { status } = await getJson(`${webUrl}/api/users/audit/log`);
+  assert.equal(status, 401);
+});
+
+test("an unknown account cannot sign in", async () => {
+  // Deliberately an address that cannot exist, rather than a real account with
+  // the wrong password: failed attempts lock the account they are aimed at,
+  // and locking a real user out for fifteen minutes is not something a health
+  // check should be able to do.
+  const { status, body } = await getJson(`${webUrl}/api/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      email: "smoke-check-no-such-account@example.invalid",
+      password: "not-a-real-password-000000",
+    }),
+  });
+  assert.equal(status, 401, `a sign-in with unknown credentials returned ${status}`);
+  assert.ok(!body?.data?.accessToken, "a token was issued for an account that does not exist");
+});
+
+// --- signed in, still read only ---------------------------------------------
+
+test("a signed-in viewer can read, and only read", { skip: skipUnauthenticated }, async (t) => {
+  let accessToken;
+  let refreshCookie;
+
+  await t.test("sign in", async () => {
+    const response = await fetch(`${webUrl}/api/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+    const body = await response.json();
+    assert.equal(response.status, 200, `sign-in returned ${response.status}`);
+    accessToken = body?.data?.accessToken;
+    assert.ok(accessToken, "no access token in the sign-in response");
+
+    // The refresh cookie is the session. These flags are configuration, and a
+    // local run cannot catch them being wrong: a Secure cookie is not sent
+    // over plain HTTP in the first place, so only a deployed check sees this.
+    const cookie = response.headers
+      .getSetCookie()
+      .find((value) => value.startsWith("fsr_refresh="));
+    assert.ok(cookie, "sign-in set no refresh cookie");
+    assert.match(cookie, /HttpOnly/i, "the refresh cookie is readable from JavaScript");
+    assert.match(cookie, /Secure/i, "the refresh cookie is not marked Secure");
+    assert.match(cookie, /SameSite=Strict/i, "the refresh cookie is not SameSite=Strict");
+    refreshCookie = cookie.split(";")[0];
+  });
+
+  const authorised = (path) =>
+    getJson(`${webUrl}${path}`, { headers: { Authorization: `Bearer ${accessToken}` } });
+
+  await t.test("the endpoint index is served", async () => {
+    const { status, body } = await authorised("/api/");
+    assert.equal(status, 200);
+    assert.ok(Array.isArray(body?.data?.resources), "the index lists no resources");
+    assert.ok(body.data.resources.length > 0);
+  });
+
+  await t.test("premises can be listed", async () => {
+    const { status, body } = await authorised("/api/premises?limit=1");
+    assert.equal(status, 200, `GET /api/premises returned ${status}`);
+    assert.ok(Array.isArray(body?.data), "the premises list is not an array");
+  });
+
+  await t.test("the compliance summary is computed", async () => {
+    // The one read that goes beyond a single table: it joins across
+    // assessments, checks and schedules, so a missing migration or a broken
+    // view surfaces here rather than at a user's first page load.
+    const { status, body } = await authorised("/api/premises/compliance-summary");
+    assert.equal(status, 200, `GET /api/premises/compliance-summary returned ${status}`);
+    assert.ok(body?.data !== undefined, "the compliance summary returned no data");
+  });
+
+  await t.test("a viewer is refused the audit log", async () => {
+    // Read-only proof that role enforcement survived the deploy. Checked with
+    // a GET that an admin would be allowed, rather than a write a viewer is
+    // not: a write that wrongly succeeded would leave a record behind.
+    const { status } = await authorised("/api/users/audit/log");
+    assert.equal(status, 403, `a viewer got ${status} from the admin-only audit log`);
+  });
+
+  await t.test("sign out", async () => {
+    // Hands the session back, rather than leaving a refresh token sitting in
+    // the database until it expires.
+    const response = await fetch(`${webUrl}/api/auth/logout`, {
+      method: "POST",
+      headers: { Cookie: refreshCookie },
+    });
+    assert.equal(response.status, 204, `sign-out returned ${response.status}`);
+  });
+});
