@@ -71,8 +71,12 @@ try {
     )
   `);
 
+  // .down.sql is excluded, and the exclusion is the whole point: a down
+  // migration is the reversal of a forward one, so applying it as a migration
+  // in its own right would undo the change on the next deploy — dropping the
+  // column it exists to be able to put back.
   const files = (await readdir(migrationsDir))
-    .filter((name) => name.endsWith(".sql"))
+    .filter((name) => name.endsWith(".sql") && !name.endsWith(".down.sql"))
     .sort((a, b) => a.localeCompare(b, "en"));
 
   const { rows: applied } = await client.query(

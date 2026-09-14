@@ -83,6 +83,14 @@ test("an additive migration applies, is recorded, and its down migration reverse
   assert.match(applied.output, new RegExp(`applying ${name}`));
   assert.equal(await columnExists("premises", column), true, "the column was not added");
 
+  // The reversal must never be mistaken for a migration of its own. Applying
+  // it forward would undo the change on the very next deploy — dropping the
+  // column it exists to be able to put back — and CI caught exactly that.
+  assert.ok(
+    !applied.output.includes(".down.sql"),
+    `a .down.sql was treated as a pending migration:\n${applied.output}`,
+  );
+
   const { rows: recorded } = await pool.query(
     "SELECT checksum FROM schema_migrations WHERE filename = $1",
     [name],
