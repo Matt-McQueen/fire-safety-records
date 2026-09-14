@@ -87,10 +87,15 @@ test("a draft assessment is published, then superseded by its review", async ({ 
   await page.getByRole("button", { name: "+ Add finding" }).click();
   await page.getByLabel("Finding").fill("Fire door to the plant room found wedged open with a fire extinguisher.");
   await page.getByRole("button", { name: "Add", exact: true }).click();
-  // Wait for the finding to actually land before publishing - Publish is a
-  // page-level button with no dependency on the add-finding form's own
-  // state, so clicking it right away can race the finding's own create
-  // request and get refused for recording none.
+
+  // The comment that used to sit here had the diagnosis exactly right - Publish
+  // is a page-level button with no dependency on the add-finding form, so
+  // clicking it straight away races the finding's own create request and gets
+  // refused for recording none. The fix under it did not work: "Finding" is a
+  // textarea, so getByText matched the words this test had just typed and
+  // passed before the request had left. Waiting for the form to close waits for
+  // onSuccess, which is the server's answer rather than our own input.
+  await expect(page.getByRole("button", { name: "Add", exact: true })).toHaveCount(0);
   await expect(page.getByText("Fire door to the plant room")).toBeVisible();
 
   await page.getByRole("button", { name: "Publish" }).click();
