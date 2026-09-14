@@ -554,6 +554,12 @@ CREATE INDEX ON fire_drills (premises_id, held_at DESC);
 CREATE INDEX ON training_records (person_id, delivered_on DESC);
 CREATE INDEX ON training_records (next_due_on) WHERE next_due_on IS NOT NULL;
 CREATE INDEX ON safety_roles (premises_id, role) WHERE ended_on IS NULL;
+
+-- One person cannot hold the same role at the same premises twice over
+-- while both appointments are active; that is duplication, not a second
+-- appointment. Enforced here as well as in application rules, so it holds
+-- even if a row is inserted outside the API.
+CREATE UNIQUE INDEX ON safety_roles (premises_id, person_id, role) WHERE ended_on IS NULL;
 CREATE INDEX ON incidents (premises_id, occurred_on DESC);
 CREATE INDEX ON enforcement_notices (premises_id) WHERE in_force;
 

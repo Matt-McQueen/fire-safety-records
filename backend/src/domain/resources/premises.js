@@ -296,8 +296,8 @@ export const safetyRoles = {
   permissions: { read: "viewer", create: "manager", update: "manager", remove: "manager" },
   sortable: { id: "t.id", appointed_on: "t.appointed_on", role: "t.role" },
   defaultSort: "appointed_on",
-  extraJoins: "JOIN people ppl ON ppl.id = t.person_id",
-  computed: ["ppl.full_name AS person_name", "(t.ended_on IS NULL) AS is_active"],
+  extraJoins: "JOIN people ppl ON ppl.id = t.person_id JOIN premises prem ON prem.id = t.premises_id",
+  computed: ["ppl.full_name AS person_name", "prem.name AS premises_name", "(t.ended_on IS NULL) AS is_active"],
   filters: [
     { param: "premises_id", column: "t.premises_id", schema: id.optional() },
     { param: "person_id", column: "t.person_id", schema: id.optional() },
@@ -333,6 +333,7 @@ async function assertRoleCoherent(client, body, before, premisesId) {
   assertNominatedRoleIsEmployee(role, person);
   assertCompetenceRecorded(role, resulting(body, before, "competence_evidence"));
   await assertNoDutyHolderClash(client, role, endedOn, premisesId, before?.id ?? 0);
+  await assertNoDuplicateActiveRole(client, personId, role, endedOn, premisesId, before?.id ?? 0);
 }
 
 // Fire (Scotland) Act 2005 s.53(4) and SSI 2006/456 reg 15: the people
@@ -369,6 +370,23 @@ async function assertNoDutyHolderClash(client, role, endedOn, premisesId, exclud
     throw conflict(
       "This premises already has a duty holder. End the current appointment before recording a new one.",
     );
+  }
+}
+
+// Appointing the same person to the same role at the same premises twice
+// over, while both remain active, is never meaningful — it is duplication,
+// not a second appointment. A reappointment after one has ended is fine and
+// is not affected by this check.
+async function assertNoDuplicateActiveRole(client, personId, role, endedOn, premisesId, excludeId) {
+  if (present(endedOn)) return;
+  const duplicate = await countRows(
+    client,
+    `SELECT count(*) FROM safety_roles
+      WHERE premises_id = $1 AND person_id = $2 AND role = $3 AND ended_on IS NULL AND id <> $4`,
+    [premisesId, personId, role, excludeId],
+  );
+  if (duplicate > 0) {
+    throw conflict("This person already holds this role at this premises. End the current appointment first.");
   }
 }
 

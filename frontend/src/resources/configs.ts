@@ -101,6 +101,7 @@ const safetyRoles: ResourceConfig = {
   helpText: "Fire (Scotland) Act 2005 s.53(4) and SSI 2006/456 reg 15 — who is nominated for firefighting duties, evacuation and competent assistance.",
   columns: [
     { key: "person_name", label: "Person" },
+    { key: "premises_name", label: "Premises" },
     { key: "role", label: "Role", render: (row) => SAFETY_ROLE_LABELS[String(row.role)] ?? String(row.role) },
     { key: "appointed_on", label: "Appointed", render: dateCol("appointed_on") },
     {

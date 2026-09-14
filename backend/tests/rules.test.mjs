@@ -1208,6 +1208,39 @@ test("a premises has one duty holder at a time", async () => {
   assert.equal(successor.status, 201);
 });
 
+test("a person cannot hold the same role at the same premises twice over", async () => {
+  const premises = await makePremises();
+  const { manager } = await makeRoles(premises.id);
+  const person = await makePerson();
+
+  const original = await manager.post("/api/safety-roles", {
+    premises_id: premises.id,
+    person_id: person.id,
+    role: "fire_warden",
+    appointed_on: daysAgo(400),
+  });
+  assert.equal(original.status, 201);
+
+  const duplicate = await manager.post("/api/safety-roles", {
+    premises_id: premises.id,
+    person_id: person.id,
+    role: "fire_warden",
+    appointed_on: daysAgo(10),
+  });
+  assert.equal(duplicate.status, 409);
+  assert.match(duplicate.body.error.message, /already holds this role/);
+
+  // Ending the first appointment clears the way for a reappointment.
+  await manager.patch(`/api/safety-roles/${original.body.data.id}`, { ended_on: daysAgo(11) });
+  const reappointment = await manager.post("/api/safety-roles", {
+    premises_id: premises.id,
+    person_id: person.id,
+    role: "fire_warden",
+    appointed_on: daysAgo(10),
+  });
+  assert.equal(reappointment.status, 201);
+});
+
 test("a person who appears in the records is closed rather than deleted", async () => {
   const premises = await makePremises();
   const { manager } = await makeRoles(premises.id);
