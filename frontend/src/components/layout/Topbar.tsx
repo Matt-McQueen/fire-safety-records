@@ -33,12 +33,6 @@ export function Topbar({ onMenuClick }: { onMenuClick: () => void }) {
         Fire Safety Records
       </Link>
 
-      {import.meta.env.VITE_ENVIRONMENT === "staging" && (
-        <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
-          STAGING
-        </span>
-      )}
-
       <div className="flex-1" />
 
       <div className="w-56">
