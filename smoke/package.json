@@ -1,0 +1,14 @@
+{
+  "name": "fire-safety-records-smoke",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Read-only checks that run against a deployed environment, production included.",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "test": "node --test smoke.test.mjs",
+    "wait": "node wait-for-deploy.mjs"
+  }
+}

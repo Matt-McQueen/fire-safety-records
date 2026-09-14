@@ -1,0 +1,67 @@
+# Checks a deployed environment after a promotion.
+#
+# Two jobs' worth of work in one: wait until the environment is actually
+# serving the commit that was just pushed, then run the read-only smoke suite
+# against it. The waiting is not a nicety — Render, Vercel and Pages all deploy
+# asynchronously, so a suite that starts on the push tests the build it was
+# meant to replace and passes.
+#
+# Nothing here writes to a database. The suites that do (backend/tests, e2e/)
+# are for the working copy and for staging, and are never pointed at
+# production; see smoke/README.md.
+
+name: Smoke
+
+on:
+  push:
+    branches: [main, staging]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Which environment to check
+        type: choice
+        options: [staging, production]
+        required: true
+      commit:
+        description: Commit the environment should be serving (defaults to this ref)
+        type: string
+        required: false
+
+jobs:
+  smoke:
+    name: ${{ inputs.environment || (github.ref_name == 'main' && 'production' || 'staging') }}
+    runs-on: ubuntu-latest
+
+    # Resolves the URLs and the smoke account from the GitHub Environment of
+    # the same name, so staging and production differ by configuration rather
+    # than by a branch of YAML. See README.md for what to put in each.
+    environment: ${{ inputs.environment || (github.ref_name == 'main' && 'production' || 'staging') }}
+
+    env:
+      # The commit the environment is expected to be serving: what was just
+      # pushed, or whatever a manual run named instead.
+      SMOKE_COMMIT: ${{ inputs.commit || github.sha }}
+      SMOKE_WEB_URL: ${{ vars.SMOKE_WEB_URL }}
+      SMOKE_API_URL: ${{ vars.SMOKE_API_URL }}
+      SMOKE_EMAIL: ${{ secrets.SMOKE_EMAIL }}
+      SMOKE_PASSWORD: ${{ secrets.SMOKE_PASSWORD }}
+      SMOKE_ENVIRONMENT: ${{ inputs.environment || (github.ref_name == 'main' && 'production' || 'staging') }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # Until this passes there is nothing worth testing: every URL already
+      # answers, with the build this push was meant to replace.
+      - name: Wait for the deploy to land
+        run: |
+          args="--url $SMOKE_WEB_URL --commit $SMOKE_COMMIT"
+          if [ -n "$SMOKE_API_URL" ]; then args="$args --url $SMOKE_API_URL"; fi
+          node wait-for-deploy.mjs $args
+        working-directory: smoke
+
+      - name: Smoke tests
+        run: npm test
+        working-directory: smoke

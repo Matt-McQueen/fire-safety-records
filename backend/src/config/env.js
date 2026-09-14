@@ -59,10 +59,30 @@ function signingSecret() {
 
 const databaseUrl = required("DATABASE_URL");
 
+// Which deployment this is, and which commit it was built from.
+//
+// Both are reported by /api/health, which is what makes it possible to tell
+// whether a deploy has actually landed before running tests against it. A
+// platform that deploys asynchronously (Render, Vercel, Pages all do) will
+// happily serve the previous build for a minute or two after a push, and a
+// test suite that starts too early tests the old one and passes.
+//
+// Render and Vercel both inject the commit themselves; GIT_COMMIT is the
+// manual override for anywhere that does not. APP_ENVIRONMENT names the
+// deployment because NODE_ENV cannot: staging runs with NODE_ENV=production,
+// since it is a real deployment and should behave like one.
+const commit =
+  process.env.GIT_COMMIT ||
+  process.env.RENDER_GIT_COMMIT ||
+  process.env.VERCEL_GIT_COMMIT_SHA ||
+  null;
+
 export const config = {
   env: process.env.NODE_ENV || "development",
   isProduction,
   isTest,
+  environment: process.env.APP_ENVIRONMENT || process.env.NODE_ENV || "development",
+  commit,
   port: integer("PORT", 3001),
   databaseUrl,
 

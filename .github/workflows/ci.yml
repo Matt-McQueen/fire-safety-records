@@ -1,0 +1,175 @@
+# The gate in front of the pull request.
+#
+# Everything here runs against a throwaway Postgres created for the run, so it
+# needs no secrets and can run on a pull request from anywhere. The point is
+# that a change is proved *before* it reaches a deployed environment: staging
+# is for looking at a change that already works, not for finding out whether it
+# compiles.
+#
+# What is deliberately not here: anything that touches staging, production, or
+# their databases. Promotion is a decision, and a decision belongs to a person.
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main, staging]
+
+# A second push to the same branch makes the first run irrelevant. The e2e job
+# is the long one, and there is no reason to pay for it twice.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "22"
+
+jobs:
+  frontend:
+    name: Frontend — types, unit tests, build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+        working-directory: frontend
+      - name: Typecheck
+        run: npm run lint
+        working-directory: frontend
+      - name: Unit tests
+        run: npm test
+        working-directory: frontend
+      # Builds here rather than only on Cloudflare Pages: a build that fails
+      # there fails after the branch has already been merged and pushed.
+      - name: Build
+        run: npm run build
+        working-directory: frontend
+
+  backend:
+    name: Backend — unit and integration tests
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+        ports:
+          - 5432:5432
+
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
+      NODE_ENV: test
+      # Never a real key: this database exists for the length of this job.
+      JWT_SECRET: ci-only-signing-key-not-used-anywhere-else
+      # The suite creates a lot of accounts and the runner is not fast. Every
+      # hash records the cost it was made with, so a low one here changes
+      # nothing about how passwords are stored anywhere else.
+      SCRYPT_COST: "1024"
+      PG_POOL_MAX: "5"
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci
+        working-directory: backend
+
+      # A fresh database is built from schema.sql, exactly as a new environment
+      # would be, and then the migrations are applied over it. That ordering is
+      # the check: a migration that contradicts an updated schema.sql fails
+      # here, rather than on the database that matters.
+      - name: Create the schema
+        run: |
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f src/db/schema.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f src/db/auth-schema.sql
+        working-directory: backend
+      - name: Apply migrations
+        run: npm run migrate
+        working-directory: backend
+
+      - name: Unit tests
+        run: npm run test:unit
+        working-directory: backend
+      - name: Integration tests
+        run: npm run test:integration
+        working-directory: backend
+
+  e2e:
+    name: End to end
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+        ports:
+          - 5432:5432
+
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
+      JWT_SECRET: ci-only-signing-key-not-used-anywhere-else
+      SCRYPT_COST: "1024"
+      PG_POOL_MAX: "5"
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - run: npm ci
+        working-directory: backend
+      - run: npm ci
+        working-directory: frontend
+      - run: npm ci
+        working-directory: e2e
+
+      - name: Create the schema
+        run: |
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f src/db/schema.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f src/db/auth-schema.sql
+        working-directory: backend
+      - name: Apply migrations
+        run: npm run migrate
+        working-directory: backend
+
+      # Only chromium: the suite pins Desktop Chrome, and the other browsers
+      # are several minutes of download for nothing.
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+        working-directory: e2e
+
+      # playwright.config.js starts both dev servers itself and waits for them.
+      # E2E_BASE_URL is deliberately unset here: CI tests the working copy, not
+      # a deployment.
+      - name: Run the suite
+        run: npm test
+        working-directory: e2e
+
+      - name: Upload the report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: e2e/playwright-report
+          retention-days: 7

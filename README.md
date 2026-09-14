@@ -372,11 +372,126 @@ at Render). The `staging` branch gets a stable alias —
 `staging.<project>.pages.dev` — rather than the usual per-commit preview
 URL, because Cloudflare Pages aliases every branch deployment that way.
 
-**Promoting a change**: merge or fast-forward `main` into `staging` (or vice
-versa once tested) and push; Render, Vercel and Cloudflare Pages all deploy
-from their respective branches automatically. The staging database is
-seeded with the same sample data as local development (`npm run seed`) and
-is safe to reset the same way — it holds no real records.
+**Promoting a change**: pushing a branch is all it takes — Render, Vercel and
+Cloudflare Pages each deploy from the branch they track. Which branch a change
+reaches when, and what has to be true before it reaches the next one, is the
+subject of *Making a change* below. The staging database is seeded with the
+same sample data as local development (`npm run seed`) and is safe to reset the
+same way — it holds no real records.
+
+## Making a change
+
+Every change takes the same route, and the route exists for one reason:
+production is never where a change is first tried. Two of the steps are a
+person's judgement rather than a command, and neither is skippable.
+
+1. **Branch off `staging`.** Nothing is committed to `main` or `staging`
+   directly.
+2. **Make the change.** A schema change is a migration file
+   (`backend/src/db/migrations/`), not SQL run by hand — see that directory's
+   README for why that distinction is the difference between a working staging
+   and a broken production.
+3. **Prove it locally**: `backend` `npm test`, `frontend` `npm run lint`,
+   `npm test` and `npm run build`, then `e2e` `npm test`, then Fallow over the
+   diff. All of it before the pull request, not after: a deployed environment
+   is a poor place to discover that something does not compile.
+4. **Open the pull request against `staging`**, with those results in the
+   description. CI runs the same checks on a throwaway database, and the pull
+   request waits for review. **Not against `main`** — `main` is what production
+   deploys from, so a pull request merged there is a change shipped to
+   production before staging has seen it.
+5. **Merge to `staging`.** Apply any migration to the staging database first
+   (`npm run migrate`), then let the push deploy. Wait for the deploy to land
+   before testing it:
+
+   ```bash
+   cd smoke
+   node wait-for-deploy.mjs --url https://staging.fire-safety-records.pages.dev --commit $(git rev-parse HEAD)
+   ```
+
+6. **Run the suites against staging**, which is the first run against a real
+   deployment rather than a working copy:
+
+   ```bash
+   cd backend && API_BASE_URL=https://<vercel-url> DATABASE_URL=<neon-url> npm run test:integration
+   cd e2e     && E2E_BASE_URL=https://staging.fire-safety-records.pages.dev DATABASE_URL=<neon-url> npm test
+   ```
+
+7. **Hand it over.** Staging is where the change is looked at by a person, not
+   where it is debugged.
+8. **Promote, once that person has approved it.** Snapshot the production
+   database *before* applying any migration to it — reverting a deploy reverts
+   the code and does not revert a migration. Set any new environment variable
+   in Render, Vercel and the Pages project before the deploy lands, not after.
+   Then fast-forward `main` from `staging` and push.
+9. **Check production** with the read-only suite, and nothing else:
+
+   ```bash
+   cd smoke
+   SMOKE_WEB_URL=https://fire-safety-records.pages.dev SMOKE_ENVIRONMENT=production \
+   SMOKE_COMMIT=$(git rev-parse HEAD) npm test
+   ```
+
+   The `Smoke` workflow does steps 5 and 9 automatically on every push to
+   `staging` and `main`; run it by hand from the Actions tab against either
+   environment.
+
+**Never point `backend/tests` or `e2e/` at production.** Both create premises,
+people and accounts directly in the database and delete them afterwards, which
+is the right trade for a disposable environment and the wrong one for a live
+database holding personal data. `smoke/` is the production suite and it writes
+nothing.
+
+### If production breaks anyway
+
+Revert the merge on `main` and push — Render and Pages redeploy from it — then
+re-run the smoke suite to confirm the revert landed. If the change included a
+migration, the revert does not undo it: that is what the snapshot taken in step
+8 is for, and it is why migrations expand before they contract (add a nullable
+column now, make it `NOT NULL` in a later release) so that the previous release
+keeps working against the new schema.
+
+### What staging cannot tell you
+
+Staging is a separate environment, not a copy of production, and the
+differences are load-bearing:
+
+- **The API runs differently.** Production is one long-lived Node process on
+  Render; staging is Vercel serverless functions. Rate limits are held in
+  memory, so on staging they reset with every cold start and are effectively
+  per-instance. Anything depending on process lifetime — a cache, a timer,
+  pooled connections — behaves differently there.
+- **The database is a different product.** Neon on staging, Supabase on
+  production, with different connection limits and pooler behaviour.
+- **The data is sample data.** Volume-dependent problems do not appear.
+
+So a pass on staging is evidence, not proof, for those classes of change, and
+the smoke suite on production is what actually closes the loop.
+
+### Branch protection
+
+The workflow above is convention until GitHub enforces it; one push to `main`
+defeats all of it. Required once per repository:
+
+```bash
+gh api -X PUT repos/:owner/:repo/branches/main/protection \
+  -f 'required_pull_request_reviews[required_approving_review_count]=1' \
+  -f 'required_status_checks[strict]=true' \
+  -f 'required_status_checks[contexts][]=Frontend — types, unit tests, build' \
+  -f 'required_status_checks[contexts][]=Backend — unit and integration tests' \
+  -f 'required_status_checks[contexts][]=End to end' \
+  -F 'enforce_admins=true' -F 'restrictions=null'
+```
+
+Run the same for `staging`. `enforce_admins` matters: the account that owns
+this repository is also the one most likely to push to it out of habit.
+
+The `Smoke` workflow reads each environment's URLs and credentials from a
+GitHub Environment (Settings → Environments) named `staging` and `production`:
+variables `SMOKE_WEB_URL` and `SMOKE_API_URL`, secrets `SMOKE_EMAIL` and
+`SMOKE_PASSWORD` for a viewer-role account with no premises granted. Adding a
+required reviewer to the `production` environment turns the promotion itself
+into a second approval.
 
 ## Tests
 
@@ -421,6 +536,49 @@ browser — the login form, a premises created/edited/deleted through the UI,
 and confirming a lower role actually can't see or reach what it shouldn't.
 See [`e2e/README.md`](e2e/README.md) for how its fixtures work.
 
+```bash
+cd smoke
+SMOKE_WEB_URL=https://fire-safety-records.pages.dev npm test
+```
+
+Read-only checks against a deployed environment, and **the only suite that may
+be pointed at production**. It proves that the environment is up, is serving
+the build it is supposed to be, still refuses an unauthenticated read, and
+still hands back a `Secure`, `HttpOnly`, `SameSite=Strict` refresh cookie —
+the last of which no local run can check, because a Secure cookie is never
+sent over plain HTTP. It proves no business rule; that is settled before
+anything is promoted. See [`smoke/README.md`](smoke/README.md).
+
+### Running a suite against a deployment
+
+The two writing suites default to a working copy — the backend one starts the
+app inside the test process, and Playwright starts both dev servers itself.
+Either can be pointed at a deployed environment instead, which is what
+step 6 of *Making a change* does:
+
+| | |
+|---|---|
+| `API_BASE_URL` | Sends `backend/tests` at a deployed API instead of one started in-process. |
+| `E2E_BASE_URL` | Sends Playwright at a deployed frontend, and stops it starting any dev server. |
+
+Both still insert their fixtures straight into the database, so `DATABASE_URL`
+has to name *that* environment's database. The rate limit overrides the suites
+set for themselves only reach a process they started, so a deployment being
+tested this way needs its own `RATE_LIMIT_LOGIN`, `RATE_LIMIT_REFRESH` and
+`RATE_LIMIT_API` raised, or the run will be throttled partway through.
+
+Neither may be aimed at production. Both create and delete real records, and a
+run that dies partway leaves them behind.
+
+### In CI
+
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs all of the above
+except the smoke suite on every pull request, against a Postgres created for
+the run — built from `schema.sql` and then migrated, so a migration that
+contradicts the schema file fails there rather than on a database that
+matters. [`.github/workflows/smoke.yml`](.github/workflows/smoke.yml) waits
+for a push to `staging` or `main` to actually deploy, then smokes it.
+
 ## Status
 
 - [x] Database schema
@@ -434,6 +592,10 @@ See [`e2e/README.md`](e2e/README.md) for how its fixtures work.
 - [x] End-to-end tests (`e2e/`) — Playwright driving the rendered frontend
       against the real API and database, on top of the frontend's Vitest
       suite covering its logic in isolation
+- [x] Deployment safety net — migrations (`backend/src/db/migrations/`), the
+      read-only production suite (`smoke/`), a commit reported by
+      `/api/health` and stamped into the built frontend so a check can tell
+      which build answered it, and CI on every pull request
 
 Not yet built out: bulk actions, and an in-app view of the machine-readable
 `GET /api/` index.
