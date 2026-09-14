@@ -26,6 +26,22 @@ assertDisposableDatabase("the migration tests");
 
 const { pool } = await import("../src/db/pool.js");
 
+// These tests apply real migrations to whatever DATABASE_URL names, and a
+// migration is not a fixture: it alters the schema rather than adding rows that
+// can be deleted again by marker. That is right against a database created for
+// the run and wrong against anything else - pointed at deployed staging, this
+// file added a column to the real premises table and then spent two and a half
+// minutes failing to reverse it, because the runner refused a down migration
+// without a recent backup. The runner was right. The test had no business being
+// there.
+//
+// Local means disposable here, the same judgement scripts/migrate.mjs makes
+// when deciding whether to insist on a backup.
+const targetHost = new URL(process.env.DATABASE_URL).hostname;
+const notLocal = /^(localhost|127\.0\.0\.1|::1)$/.test(targetHost)
+  ? false
+  : `these apply migrations to the database itself, and ${targetHost} is not a local one`;
+
 const backendRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const migrationsDir = path.join(backendRoot, "src", "db", "migrations");
 
@@ -65,7 +81,7 @@ async function columnExists(table, column) {
   return rows.length > 0;
 }
 
-test("an additive migration applies, is recorded, and its down migration reverses it", async () => {
+test("an additive migration applies, is recorded, and its down migration reverses it", { skip: notLocal }, async () => {
   const column = `test_${marker}_note`;
   const name = await writeMigration(
     `9990_add_${marker}.sql`,
@@ -115,7 +131,7 @@ test("an additive migration applies, is recorded, and its down migration reverse
   assert.equal(afterDown.length, 0, "the migration is still recorded as applied");
 });
 
-test("a destructive migration is refused unless it says so", async () => {
+test("a destructive migration is refused unless it says so", { skip: notLocal }, async () => {
   // Harmless if it ever did run: the table does not exist. Destructive by
   // shape, which is what the runner judges on.
   const name = await writeMigration(
@@ -132,7 +148,7 @@ test("a destructive migration is refused unless it says so", async () => {
   assert.equal(rows.length, 0, "a refused migration was recorded as applied");
 });
 
-test("the approval line is what unlocks it", async () => {
+test("the approval line is what unlocks it", { skip: notLocal }, async () => {
   const file = path.join(migrationsDir, `9991_drop_${marker}.sql`);
   const sql = await readFile(file, "utf8");
   await writeFile(
@@ -147,7 +163,7 @@ test("the approval line is what unlocks it", async () => {
   assert.match(applied.output, /destructive, approved/);
 });
 
-test("an applied migration cannot be edited afterwards", async () => {
+test("an applied migration cannot be edited afterwards", { skip: notLocal }, async () => {
   const file = path.join(migrationsDir, `9990_add_${marker}.sql`);
   // 9990 was reversed above, so re-apply it to have something recorded.
   await migrate();
@@ -165,11 +181,15 @@ test("an applied migration cannot be edited afterwards", async () => {
 test.after(async () => {
   for (const file of written) await rm(file, { force: true });
 
-  // Anything these tests recorded or added, removed - in the order that leaves
-  // nothing behind even if a test failed partway.
-  await pool.query("DELETE FROM schema_migrations WHERE filename LIKE $1", [`999%_${marker}%`]);
-  await pool.query(
-    `ALTER TABLE premises DROP COLUMN IF EXISTS test_${marker}_note`,
-  );
+  // Skipped tests created nothing, so the cleanup has nothing to undo — and it
+  // is itself a DELETE and an ALTER TABLE, which have no business running
+  // against a database these tests declined to touch.
+  if (!notLocal) {
+    // Anything these tests recorded or added, removed - in the order that
+    // leaves nothing behind even if a test failed partway.
+    await pool.query("DELETE FROM schema_migrations WHERE filename LIKE $1", [`999%_${marker}%`]);
+    await pool.query(`ALTER TABLE premises DROP COLUMN IF EXISTS test_${marker}_note`);
+  }
+
   await pool.end();
 });

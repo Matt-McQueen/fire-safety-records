@@ -24,6 +24,20 @@ export default defineConfig({
   reporter: "html",
   globalTeardown: "./global-teardown.js",
 
+  // Driving a deployment is not driving localhost, and the defaults are tuned
+  // for localhost: 30s for a test, 5s for an expect. Against staging every
+  // action is a round trip to Frankfurt and on to Neon, through a serverless
+  // function that cold-starts between files.
+  //
+  // Both numbers come from an actual run rather than a guess. pagination.spec
+  // creates 26 records one after another and passed 30s doing it; publishing an
+  // assessment and seeing the page catch up passed 5s. Four specs failed that
+  // way on the first run against staging, every one of them about distance
+  // rather than behaviour - the page snapshot showed the record still saying
+  // "Draft" with no error anywhere, which is what waiting looks like.
+  timeout: remoteBaseUrl ? 120_000 : 30_000,
+  expect: { timeout: remoteBaseUrl ? 20_000 : 5_000 },
+
   use: {
     baseURL: remoteBaseUrl || "http://localhost:5173",
     trace: "on-first-retry",
