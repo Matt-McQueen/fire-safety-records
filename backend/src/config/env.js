@@ -77,11 +77,29 @@ const commit =
   process.env.VERCEL_GIT_COMMIT_SHA ||
   null;
 
+// A deployment that has not been told its own name says so, rather than
+// borrowing NODE_ENV's.
+//
+// This used to fall back to NODE_ENV, and the staging API therefore reported
+// itself as "production": Vercel sets NODE_ENV=production for every deployment,
+// because it is one. The smoke suite caught it, but only because it was told to
+// expect "staging" — the same mistake on a host expecting "production" would
+// have passed, and a staging URL that answers to "production" is exactly the
+// confusion the field exists to prevent.
+//
+// Outside a deployment there is nothing to confuse: NODE_ENV is the honest
+// answer for a dev server or a test run.
+function environmentName() {
+  const named = process.env.APP_ENVIRONMENT?.trim();
+  if (named) return named;
+  return isProduction ? "unnamed" : process.env.NODE_ENV || "development";
+}
+
 export const config = {
   env: process.env.NODE_ENV || "development",
   isProduction,
   isTest,
-  environment: process.env.APP_ENVIRONMENT || process.env.NODE_ENV || "development",
+  environment: environmentName(),
   commit,
   port: integer("PORT", 3001),
   databaseUrl,

@@ -364,6 +364,16 @@ must be **Other**, not the auto-detected **Express** — that preset applies
 its own zero-config entry-point discovery that finds `src/app.js` instead of
 `api/index.js`, and `app.js` has no default export, so every request 500s.
 
+**Name the deployment.** Set `APP_ENVIRONMENT=staging` in the Vercel project's
+Settings -> Environment Variables (for its Production environment - that
+project's production branch is `staging`), and `APP_ENVIRONMENT=production` on
+the Render service. It has to be the dashboard: current `vercel.json` has no
+property that defines environment variables, and `render.yaml` only reaches a
+service that is synced from the blueprint. Without it the API reports its
+environment as `unnamed` and the smoke suite refuses to confirm which
+environment answered - which is the point, since the alternative was staging
+quietly calling itself production.
+
 To reach the Vercel deployment, the Cloudflare Pages **Preview** environment
 (Settings → Variables and secrets, with the environment switched to
 *Preview*) has its own `API_ORIGIN` pointing at the Vercel URL, kept
