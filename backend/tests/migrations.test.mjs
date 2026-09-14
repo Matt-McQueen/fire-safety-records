@@ -9,6 +9,13 @@
 // Everything here writes to a temporary table and a temporary migration file,
 // both named for this run and removed afterwards.
 
+// Every other file in this suite reaches DATABASE_URL through helpers.mjs,
+// which imports src/config/env.js, which loads dotenv. This one does not use
+// helpers - it drives scripts/migrate.mjs rather than the API - so it has to
+// load .env itself. Without this the file crashed outright wherever
+// DATABASE_URL was only in .env rather than in the environment, which is the
+// normal case for a developer and was not the case in CI or against staging.
+import "dotenv/config";
 import test from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
@@ -37,7 +44,7 @@ const { pool } = await import("../src/db/pool.js");
 //
 // Local means disposable here, the same judgement scripts/migrate.mjs makes
 // when deciding whether to insist on a backup.
-const targetHost = new URL(process.env.DATABASE_URL).hostname;
+const targetHost = new URL(process.env.DATABASE_URL ?? "postgres://unset/").hostname;
 const notLocal = /^(localhost|127\.0\.0\.1|::1)$/.test(targetHost)
   ? false
   : `these apply migrations to the database itself, and ${targetHost} is not a local one`;
