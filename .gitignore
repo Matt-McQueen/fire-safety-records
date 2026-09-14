@@ -1,5 +1,6 @@
 node_modules/
 .env
+.claude/scheduled_tasks.lock
 dist/
 *.log
 *.tsbuildinfo
