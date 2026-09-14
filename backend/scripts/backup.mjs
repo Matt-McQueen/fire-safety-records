@@ -25,8 +25,9 @@
 //   BACKUP_KEEP         how many dumps to keep per database (default 10).
 //
 // Needs the PostgreSQL client tools (pg_dump, pg_restore) on PATH, at a major
-// version at or above the server's. They do not ship with Node and are not
-// installed here by default — see README.md.
+// version at or above the server's — they do not ship with Node. Install the
+// local server with them: restore-check.mjs has to put the dump somewhere, and
+// a backup nobody has restored is a guess. See README.md.
 
 import "dotenv/config";
 import crypto from "node:crypto";
@@ -97,6 +98,16 @@ await assertClientIsNewEnough(serverVersion);
 // the thing that went wrong only touched one of them.
 await run("pg_dump", [
   "--format=custom",
+  // Our schema, and only ours. A Supabase database also carries the platform's
+  // own — auth, storage, realtime, vault — which between them were more than
+  // half the tables in the first dump taken here. They are owned by roles that
+  // exist nowhere else (supabase_auth_admin and friends), so a dump containing
+  // them will not restore into an ordinary Postgres: the rehearsal fails, or
+  // worse, half-succeeds. They are also not ours to restore. Everything this
+  // application creates lives in public — no CREATE SCHEMA, no extensions —
+  // and restore-check.mjs verifies every table in schema.sql came back, which
+  // is what would notice if that ever stopped being true.
+  "--schema=public",
   "--no-owner",
   "--no-privileges",
   "--file",
@@ -128,6 +139,9 @@ const manifest = {
   bytes: size,
   sha256: await sha256(finalPath),
   objectCount,
+  // Recorded so a restore knows what it is getting, and so a later change of
+  // scope is visible in the manifests rather than only in the code.
+  schemas: ["public"],
   encrypted: Boolean(passphrase),
   commit: process.env.GIT_COMMIT ?? null,
 };
@@ -175,9 +189,13 @@ async function assertClientIsNewEnough(server) {
       [
         "pg_dump is not on PATH.",
         "",
-        "  The PostgreSQL client tools do not come with Node and are not installed",
-        "  here. On Windows, the EnterpriseDB installer offers them on their own:",
-        "  choose Command Line Tools and skip the server.",
+        "  The PostgreSQL client tools do not come with Node. On Windows:",
+        "",
+        "    winget install PostgreSQL.PostgreSQL.17 --interactive",
+        "",
+        "  Install the server alongside them rather than the tools on their own:",
+        "  restore-check.mjs has to restore the dump into something, and without a",
+        "  local server there is nowhere for a rehearsal to go.",
         "",
         `  Install a client at major version ${major(server)} or above, to match the server.`,
         "",
