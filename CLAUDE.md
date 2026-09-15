@@ -27,7 +27,10 @@ that will be deployed. What follows is the summary, not a replacement for it.
 7. **Hand it over.** ← **Human gate: Matt tests staging himself.** Staging is
    where a change is looked at by a person, not where it is debugged.
 8. **Promote, once he has approved** — backup first, env vars set in Render,
-   Vercel and Pages *before* the deploy lands, then fast-forward `main`.
+   Vercel and Pages *before* the deploy lands, then open a pull request from
+   `staging` into `main` and merge it once CI is green. The pre-push hook
+   refuses a direct push to `main`, fast-forward or not, so this is the
+   promotion mechanism, not a shortcut around it.
 9. **Check production** with the read-only smoke suite, and nothing else.
 
 Steps 4 and 7 are a person's judgement, not a command. Neither is skippable and
@@ -41,9 +44,11 @@ on a change, and say when one finishes and the next begins.
   once per clone: `git config core.hooksPath .githooks` — see
   [*Branch protection*](README.md#branch-protection) for why that is a hook and
   not a GitHub ruleset.
-- **Open a pull request against `main`.** `main` is what production deploys
-  from; a pull request merged there ships to production before staging has seen
-  the change.
+- **Open a pull request against `main` from anything other than `staging`.**
+  `main` is what production deploys from; a pull request merged there from a
+  feature branch ships to production before staging has seen the change. The
+  promotion step (8, above) opens its own pull request from `staging` into
+  `main` once staging is approved — that one is required, not forbidden.
 - **Change the schema with hand-run SQL.** A migration file is the difference
   between a working staging and a broken production. Additive, always, with a
   `.down.sql` — without one it cannot be stepped back.
