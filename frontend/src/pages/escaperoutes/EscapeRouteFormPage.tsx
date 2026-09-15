@@ -48,7 +48,7 @@ export default function EscapeRouteFormPage() {
           <Button variant="secondary" onClick={() => navigate("/escape-routes")}>
             Cancel
           </Button>
-          <Button variant="primary" loading={mutation.isPending} onClick={() => mutation.mutate()}>
+          <Button variant="success" loading={mutation.isPending} onClick={() => mutation.mutate()}>
             Create
           </Button>
         </div>

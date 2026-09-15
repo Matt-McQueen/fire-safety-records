@@ -72,7 +72,7 @@ export function ChildRecordForm({
         <Button size="sm" variant="secondary" onClick={onCancel}>
           Cancel
         </Button>
-        <Button size="sm" variant="primary" loading={mutation.isPending} onClick={() => mutation.mutate()}>
+        <Button size="sm" variant="success" loading={mutation.isPending} onClick={() => mutation.mutate()}>
           {isEdit ? "Save" : "Add"}
         </Button>
       </div>

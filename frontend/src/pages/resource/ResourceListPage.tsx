@@ -32,7 +32,7 @@ export default function ResourceListPage() {
         description={config.helpText}
         actions={
           canCreate && config.fields.length > 0 ? (
-            <Button variant="primary" onClick={() => navigate(`/records/${config.name}/new`)}>
+            <Button variant="success" onClick={() => navigate(`/records/${config.name}/new`)}>
               + New {config.label.toLowerCase()}
             </Button>
           ) : undefined

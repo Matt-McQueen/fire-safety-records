@@ -42,7 +42,7 @@ export default function UsersListPage() {
         title="Users"
         description="Accounts, roles and which premises each may reach."
         actions={
-          <Button variant="primary" onClick={() => navigate("/admin/users/new")}>
+          <Button variant="success" onClick={() => navigate("/admin/users/new")}>
             + New user
           </Button>
         }

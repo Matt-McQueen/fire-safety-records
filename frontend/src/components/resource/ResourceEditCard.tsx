@@ -63,7 +63,7 @@ export function ResourceEditCard({
         <Button variant="secondary" onClick={onCancel}>
           Cancel
         </Button>
-        <Button variant="primary" loading={mutation.isPending} onClick={() => mutation.mutate()}>
+        <Button variant="success" loading={mutation.isPending} onClick={() => mutation.mutate()}>
           Save changes
         </Button>
       </div>

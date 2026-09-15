@@ -42,7 +42,7 @@ export function UserFormFooter({
         <Button variant="secondary" onClick={onCancel}>
           Cancel
         </Button>
-        <Button variant="primary" loading={saveMutation.isPending} onClick={() => saveMutation.mutate()}>
+        <Button variant="success" loading={saveMutation.isPending} onClick={() => saveMutation.mutate()}>
           {isNew ? "Create" : "Save changes"}
         </Button>
       </div>

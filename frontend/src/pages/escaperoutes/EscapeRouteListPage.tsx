@@ -21,7 +21,7 @@ export default function EscapeRouteListPage() {
         description="SSI 2006/456 reg 13 — routes kept clear and available for use."
         actions={
           canCreate ? (
-            <Button variant="primary" onClick={() => navigate("/escape-routes/new")}>
+            <Button variant="success" onClick={() => navigate("/escape-routes/new")}>
               + New escape route
             </Button>
           ) : undefined
