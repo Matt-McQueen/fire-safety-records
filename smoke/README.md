@@ -86,6 +86,49 @@ For the same reason the suite's two commit assertions retry for a minute before
 failing, while every other assertion in it fails on the first wrong answer:
 those are asserting behaviour, where one wrong answer is one too many.
 
+### Why the API is allowed to be behind
+
+Not every push produces a new build on every origin. `render.yaml` sets
+`rootDir: backend`, and Render does not rebuild when a commit changes nothing
+under that directory — so promoting a change to `e2e/`, to CI, or to a file at
+the repository root moves the frontend and correctly leaves the API on the last
+commit that did touch `backend/`.
+
+The gate used to treat that as a deploy that had not landed. It waited the full
+ten minutes for a build that was never coming, then failed the `Smoke`
+workflow, and it did so on two consecutive promotions. The wasted ten minutes
+was not the cost. The cost was that a red `Smoke` run on `main` stopped meaning
+"production is wrong" and started meaning "one of two things, and you will have
+to go and look" — and a gate that cries wolf is how the real wolf gets in.
+
+[`deploy-scope.mjs`](deploy-scope.mjs) draws the line. An API origin not
+serving the promoted commit is accepted only when both of these hold:
+
+- the commit it *is* serving is an **ancestor** of the one being promoted, and
+- **nothing under the API's build paths changed** in between.
+
+An older commit off to one side of history, or an older commit with backend
+changes since, is a deploy that failed or never ran, and is still refused —
+those are what the gate is for. When it does accept an origin this way it says
+so in its output rather than passing quietly.
+
+Two deliberate asymmetries:
+
+- **The frontend gets no such latitude.** Cloudflare Pages builds every commit
+  on the branch it tracks regardless of which files changed, so a frontend
+  still serving an older commit has no innocent explanation.
+- **The build paths are read from `render.yaml`**, not restated here, so
+  changing where the API builds from changes what the gate believes in the same
+  commit.
+
+Everything fails closed. No checkout, a shallow clone, no git, a blueprint it
+cannot parse — any of those and no exemption is granted, so the gate behaves
+exactly as it did before. Being too strict costs a red build on a healthy
+deployment; being too lax costs a broken production that reports itself well,
+and only one of those is recoverable by reading the log. This is why the
+`Smoke` workflow checks out with `fetch-depth: 0`: without the history, the
+gate cannot tell the two cases apart and will not guess.
+
 ## Testing the tests
 
 ```bash

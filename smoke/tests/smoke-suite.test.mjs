@@ -223,10 +223,13 @@ test("a sign-in that sets no session cookie at all fails the suite", async (t) =
 });
 
 test("an API still serving the previous build fails the suite", async (t) => {
+  // STUB_OLD_COMMIT is not in any history this checkout has, so the exemption
+  // in deploy-scope.mjs cannot reach it: an API reporting a commit nobody can
+  // place is a failed deploy, and the suite still says so.
   await expectRed(
     t,
     { commit: STUB_OLD_COMMIT },
-    "the API is running the commit being tested",
+    "the API is running the commit it should be",
   );
 });
 
