@@ -723,6 +723,17 @@ the last of which no local run can check, because a Secure cookie is never
 sent over plain HTTP. It proves no business rule; that is settled before
 anything is promoted. See [`smoke/README.md`](smoke/README.md).
 
+```bash
+cd smoke
+npm run test:unit
+```
+
+The smoke suite's own tests, and the one suite here that needs nothing at
+all — no database, no deployment, no credentials. It runs both the suite above
+and `wait-for-deploy.mjs` against a stub deployment that can be broken on
+purpose, and asserts they go red when it is. A check that decides whether
+production is healthy is worth exactly what its own coverage is worth.
+
 ### Running a suite against a deployment
 
 The two writing suites default to a working copy — the backend one starts the
@@ -747,7 +758,8 @@ run that dies partway leaves them behind.
 ### In CI
 
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs all of the above
-except the smoke suite on every pull request, against a Postgres created for
+except the smoke suite itself on every pull request — the smoke suite's own
+tests do run there, since they need nothing — against a Postgres created for
 the run — built from `schema.sql` and then migrated, so a migration that
 contradicts the schema file fails there rather than on a database that
 matters. [`.github/workflows/smoke.yml`](.github/workflows/smoke.yml) waits

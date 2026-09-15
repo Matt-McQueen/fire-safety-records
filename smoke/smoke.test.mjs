@@ -46,6 +46,12 @@ const password = process.env.SMOKE_PASSWORD;
 const expectedCommit = process.env.SMOKE_COMMIT?.trim();
 const expectedEnvironment = process.env.SMOKE_ENVIRONMENT?.trim();
 
+// How long the two commit assertions keep retrying before believing a wrong
+// answer. Configurable only so that the tests in tests/ can exercise the
+// failing path in a moment rather than a minute; left unset — which is every
+// real run — it is the minute it has always been.
+const settleSeconds = Number(process.env.SMOKE_SETTLE_SECONDS ?? 60);
+
 if (!webUrl) {
   console.error("SMOKE_WEB_URL is not set. See smoke/README.md.");
   process.exit(1);
@@ -80,7 +86,7 @@ function commitMatches(reported, expected) {
 // check that means something and one that cries wolf. Only the commit checks
 // use this: everything else here is asserting behaviour, where one wrong answer
 // is one too many.
-async function settles(check, { seconds = 60, every = 5 } = {}) {
+async function settles(check, { seconds = settleSeconds, every = Math.min(5, seconds / 4) } = {}) {
   const deadline = Date.now() + seconds * 1000;
   let last;
   while (true) {
