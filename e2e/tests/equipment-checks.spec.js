@@ -55,6 +55,11 @@ test("a check history gates deletion, and the latest check decides the defect st
   await page.getByLabel("Defects found").fill("Pressure gauge reading in the red zone; needs recharging.");
   await page.getByRole("button", { name: "Add", exact: true }).click();
 
+  // See fra-lifecycle.spec.js: "Defects found" is a textarea, so getByText
+  // would match the words this test just typed into it whether or not the
+  // check was ever saved. The form closing (onSuccess, and nowhere else) is
+  // what actually says so.
+  await expect(page.getByRole("button", { name: "Add", exact: true })).toHaveCount(0);
   await expect(page.getByText("Pressure gauge reading in the red zone")).toBeVisible();
   await expect(page.getByText("Fail", { exact: true })).toBeVisible();
   await expect(page.getByText("Defect outstanding")).toBeVisible();
