@@ -28,6 +28,7 @@ import { readFile, readdir } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
 import { findDestructiveStatements, hasDestructiveApproval } from "./lib/destructive-sql.mjs";
+import { verifyBackupFile } from "./lib/verify-dump.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const migrationsDir = path.join(here, "..", "src", "db", "migrations");
@@ -264,22 +265,49 @@ async function requireRecentBackup(what) {
 
   const database = url.pathname.replace(/^\//, "") || "postgres";
   const cutoff = Date.now() - maxAgeHours * 60 * 60 * 1000;
-  let newest = null;
 
+  const candidates = [];
   for (const name of manifests) {
     const manifest = JSON.parse(await readFile(path.join(backupDir, name), "utf8"));
     if (manifest.host !== url.hostname || manifest.database !== database) continue;
-    const takenAt = Date.parse(manifest.createdAt);
-    if (!newest || takenAt > newest.takenAt) newest = { manifest, takenAt };
+    candidates.push({ manifest, takenAt: Date.parse(manifest.createdAt) });
   }
+  candidates.sort((a, b) => b.takenAt - a.takenAt);
 
-  if (!newest) refuse(`there is no backup of ${url.hostname}/${database} in ${backupDir}`);
-  if (newest.takenAt < cutoff) {
-    const hours = ((Date.now() - newest.takenAt) / 3600000).toFixed(1);
+  if (candidates.length === 0) {
+    refuse(`there is no backup of ${url.hostname}/${database} in ${backupDir}`);
+  }
+  if (candidates[0].takenAt < cutoff) {
+    const hours = ((Date.now() - candidates[0].takenAt) / 3600000).toFixed(1);
     refuse(`the newest backup of this database is ${hours} hours old (limit ${maxAgeHours})`);
   }
 
-  console.log(`\n  backup: ${newest.manifest.file} (${newest.manifest.objectCount} objects)`);
+  // A manifest is a note saying a backup was taken; it is not the backup. Check
+  // that the dump it names is there and is the file it claims to be, newest
+  // first, and take the first one that holds up — an intact backup from this
+  // morning is worth more than a broken one from this afternoon.
+  const unusable = [];
+  let usable = null;
+  for (const candidate of candidates) {
+    if (candidate.takenAt < cutoff) break;
+    const problem = await verifyBackupFile(backupDir, candidate.manifest);
+    if (!problem) {
+      usable = candidate;
+      break;
+    }
+    unusable.push(`    ${candidate.manifest.createdAt} — ${problem}`);
+  }
+
+  if (!usable) {
+    refuse(
+      `every recent backup of ${url.hostname}/${database} failed verification\n` +
+        unusable.join("\n"),
+    );
+  }
+
+  console.log(
+    `\n  backup: ${usable.manifest.file} (${usable.manifest.objectCount} objects, dump verified)`,
+  );
 }
 
 // Steps the most recently applied migration back, using the .down.sql written
