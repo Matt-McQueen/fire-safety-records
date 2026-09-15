@@ -36,6 +36,8 @@
 // short of asking every node is — but it is the difference between catching a
 // rollout mid-flight and catching it by luck.
 
+import { judgeApiCommit, commitMatches } from "./deploy-scope.mjs";
+
 const args = parseArgs(process.argv.slice(2));
 const urls = args.url ?? [];
 const commit = args.commit?.[0]?.trim();
@@ -70,6 +72,9 @@ while (true) {
     const agreed = state.agreed + 1;
     if (agreed >= confirmations) {
       console.log(`${url} is serving ${commit} (${agreed} consecutive checks)`);
+      // Say so out loud. An origin accepted on an older commit is the one
+      // result here that a reader should not have to take on trust.
+      if (result.excused) console.log(`  accepted without a new build — ${result.note}`);
       pending.delete(url);
     } else {
       pending.set(url, { reason: `agreed ${agreed} of ${confirmations} times`, agreed });
@@ -104,18 +109,22 @@ while (true) {
 async function check(origin, expected) {
   const api = await reportedByApi(origin);
   if (api.error) return { ok: false, reason: api.error };
-  if (!matches(api.commit, expected)) {
-    return { ok: false, reason: `API reports ${api.commit ?? "no commit"}` };
-  }
+
+  // Not plain equality: the API is allowed to still be serving an older commit
+  // when nothing it builds from has changed since. See deploy-scope.mjs.
+  const verdict = judgeApiCommit(api.commit, expected);
+  if (!verdict.ok) return { ok: false, reason: `API ${verdict.reason}` };
 
   const html = await reportedByFrontend(origin);
   // An API-only origin (Render, Vercel) serves no HTML of ours, so there is
   // nothing to disagree with and the API's answer is the whole answer.
-  if (html.absent) return { ok: true };
-  if (!matches(html.commit, expected)) {
+  if (html.absent) return { ok: true, excused: verdict.excused, note: verdict.reason };
+  // The frontend gets no such latitude: Pages rebuilds every commit on the
+  // branch it tracks, so an older commit here has no innocent explanation.
+  if (!commitMatches(html.commit, expected)) {
     return { ok: false, reason: `frontend reports ${html.commit || "no commit"}` };
   }
-  return { ok: true };
+  return { ok: true, excused: verdict.excused, note: verdict.reason };
 }
 
 async function reportedByApi(origin) {
@@ -143,13 +152,6 @@ async function reportedByFrontend(origin) {
   } catch {
     return { absent: true };
   }
-}
-
-function matches(reported, expected) {
-  if (!reported) return false;
-  const [longer, shorter] =
-    reported.length >= expected.length ? [reported, expected] : [expected, reported];
-  return longer.startsWith(shorter);
 }
 
 function parseArgs(argv) {

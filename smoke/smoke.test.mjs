@@ -29,15 +29,21 @@
 //   SMOKE_PASSWORD     Without them the signed-in checks skip rather than fail,
 //                      and roughly half the value of the suite goes with them.
 //   SMOKE_COMMIT       optional. The commit this deploy was meant to be. When
-//                      set, both the API and the frontend must report it, which
-//                      is what stops a suite from passing against the build it
-//                      was supposed to replace.
+//                      set, the frontend must report it, and the API must
+//                      report either it or a commit it is still right to be
+//                      serving — Render builds only from backend/, so a
+//                      promotion that changes nothing there moves the frontend
+//                      and correctly leaves the API where it was. See
+//                      deploy-scope.mjs, which draws that line. What this
+//                      stops, either way, is a suite passing against the build
+//                      it was supposed to replace.
 //   SMOKE_ENVIRONMENT  optional. "production" or "staging"; the API must agree.
 //                      Worth setting for production runs: it is the check that
 //                      catches a URL pointed at the wrong environment.
 
 import test from "node:test";
 import assert from "node:assert/strict";
+import { judgeApiCommit, commitMatches } from "./deploy-scope.mjs";
 
 const webUrl = trimSlash(process.env.SMOKE_WEB_URL);
 const apiUrl = trimSlash(process.env.SMOKE_API_URL);
@@ -71,13 +77,6 @@ function trimSlash(value) {
 }
 
 // Compared by prefix, so a short SHA works as the expected value.
-function commitMatches(reported, expected) {
-  if (!reported) return false;
-  const [longer, shorter] =
-    reported.length >= expected.length ? [reported, expected] : [expected, reported];
-  return longer.startsWith(shorter);
-}
-
 // Retries a check for a while before believing it.
 //
 // A rollout reaches edge nodes at different moments, so a single request can be
@@ -144,18 +143,25 @@ test(
 );
 
 test(
-  "the API is running the commit being tested",
+  "the API is running the commit it should be",
   { skip: expectedCommit ? false : "SMOKE_COMMIT is not set" },
   async () => {
+    // Deliberately not "the commit being tested". Render builds only from
+    // backend/, so a promotion that changes nothing there leaves the API on an
+    // older commit and correct; deploy-scope.mjs is what separates that from a
+    // deploy that failed. Asserting plain equality here failed two healthy
+    // promotions in a row.
     const result = await settles(async () => {
       const { body } = await getJson(`${webUrl}/api/health`);
-      return { ok: commitMatches(body?.commit, expectedCommit), seen: body?.commit ?? "(none)" };
+      const verdict = judgeApiCommit(body?.commit, expectedCommit);
+      return { ok: verdict.ok, seen: verdict.reason, excused: verdict.excused };
     });
     assert.ok(
       result.ok,
-      `the API still reports commit ${result.seen} after a minute, expected ${expectedCommit}. ` +
+      `the API ${result.seen}, after a minute of asking. Expected ${expectedCommit}. ` +
         "The deploy has probably not finished; see smoke/wait-for-deploy.mjs.",
     );
+    if (result.excused) console.log(`    # the API ${result.seen}`);
   },
 );
 

@@ -13,8 +13,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
 import { spawn } from "node:child_process";
+import os from "node:os";
 import { fileURLToPath } from "node:url";
 import { startStubOrigin, STUB_COMMIT, STUB_OLD_COMMIT } from "./stub-origin.mjs";
+import { buildRepo } from "./temp-repo.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const script = path.join(here, "..", "wait-for-deploy.mjs");
@@ -31,10 +33,11 @@ const script = path.join(here, "..", "wait-for-deploy.mjs");
 const GIVES_UP = ["--interval", "0.05", "--timeout", "1"];
 const SUCCEEDS = ["--interval", "0.05", "--timeout", "10"];
 
-function runGate(args) {
+function runGate(args, env = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [script, ...args], {
       stdio: ["ignore", "pipe", "pipe"],
+      env: { ...process.env, ...env },
     });
     let stdout = "";
     let stderr = "";
@@ -255,3 +258,71 @@ test("a --url flag left empty is a misconfiguration, not an origin", async () =>
 function escapeForRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
+
+// --- an origin that is right to be behind ------------------------------------
+//
+// Render builds only from backend/, so a promotion that changes nothing there
+// leaves the API on an older commit and correct. The gate used to wait ten
+// minutes for a build that was never coming and then fail the workflow; these
+// are the tests that say it no longer does, and — much more importantly — that
+// it still fails when the older commit is not innocent.
+
+test("an API still on an older commit is accepted when no backend change is owed", async (t) => {
+  const repo = buildRepo(t);
+  const origin = await stub(t, { commit: repo.backendChange, serveHtml: false });
+
+  const { code, stdout } = await runGate(
+    ["--url", origin.url, "--commit", repo.rootOnlyChange, ...SUCCEEDS],
+    { SMOKE_REPO_ROOT: repo.dir },
+  );
+
+  assert.equal(code, 0, `expected success, got ${code}. Output:
+${stdout}`);
+  assert.match(stdout, /accepted without a new build/);
+  assert.match(stdout, /nothing under backend\/ has changed/);
+});
+
+test("an API still on an older commit is refused when a backend change is owed", async (t) => {
+  const repo = buildRepo(t);
+  const origin = await stub(t, { commit: repo.first, serveHtml: false });
+
+  const { code, stderr } = await runGate(
+    ["--url", origin.url, "--commit", repo.rootOnlyChange, ...GIVES_UP],
+    { SMOKE_REPO_ROOT: repo.dir },
+  );
+
+  assert.equal(code, 1, "a missed rebuild was waved through");
+  assert.match(stderr, /a rebuild is owed/);
+});
+
+test("an exemption does not extend to the frontend", async (t) => {
+  const repo = buildRepo(t);
+
+  // The same older commit, on an origin that serves the HTML too. Pages
+  // rebuilds every commit regardless of which files changed, so there is no
+  // innocent reason for it to be behind — and excusing the API must not
+  // quietly excuse the page in front of it.
+  const origin = await stub(t, { commit: repo.backendChange, htmlCommit: repo.backendChange });
+
+  const { code, stderr } = await runGate(
+    ["--url", origin.url, "--commit", repo.rootOnlyChange, ...GIVES_UP],
+    { SMOKE_REPO_ROOT: repo.dir },
+  );
+
+  assert.equal(code, 1, "a stale frontend rode in on the API's exemption");
+  assert.match(stderr, /frontend reports/);
+});
+
+test("without a checkout to consult, nothing is excused", async (t) => {
+  const repo = buildRepo(t);
+  const origin = await stub(t, { commit: repo.backendChange, serveHtml: false });
+
+  // What a shallow clone, or a run from outside a checkout, looks like. The
+  // safe answer is the strict one: wait, then fail, and let a person look.
+  const { code, stderr } = await runGate(
+    ["--url", origin.url, "--commit", repo.rootOnlyChange, ...GIVES_UP],
+    { SMOKE_REPO_ROOT: os.tmpdir() },
+  );
+
+  assert.equal(code, 1, "a checkout that could answer nothing granted an exemption");
+});
