@@ -448,6 +448,13 @@ person's judgement rather than a command, and neither is skippable.
    `staging` and `main`; run it by hand from the Actions tab against either
    environment.
 
+   A promotion that changes nothing under `backend/` will not produce a new
+   Render build — `render.yaml` sets `rootDir: backend` — so the API stays on
+   the last commit that did, and is right to. The gate knows that and says so
+   in its output; see [*Why the API is allowed to be
+   behind*](smoke/README.md#why-the-api-is-allowed-to-be-behind) for where it
+   draws the line between that and a deploy that failed.
+
 **Never point `backend/tests` or `e2e/` at production.** Both create premises,
 people and accounts directly in the database and delete them afterwards, which
 is the right trade for a disposable environment and the wrong one for a live

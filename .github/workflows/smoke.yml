@@ -48,7 +48,13 @@ jobs:
       SMOKE_ENVIRONMENT: ${{ inputs.environment || (github.ref_name == 'main' && 'production' || 'staging') }}
 
     steps:
+      # Full history, not the default single commit. The gate has to ask git
+      # whether the commit an origin is serving is an ancestor of this one and
+      # what changed in between; with a shallow clone it cannot, fails closed,
+      # and waits for a deploy that is not coming. See smoke/deploy-scope.mjs.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
