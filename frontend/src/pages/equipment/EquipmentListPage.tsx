@@ -24,7 +24,7 @@ export default function EquipmentListPage() {
         description="Fire safety equipment and its check history — SSI 2006/456 reg 12."
         actions={
           canCreate ? (
-            <Button variant="primary" onClick={() => navigate("/equipment/new")}>
+            <Button variant="success" onClick={() => navigate("/equipment/new")}>
               + New equipment
             </Button>
           ) : undefined

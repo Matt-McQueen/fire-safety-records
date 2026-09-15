@@ -30,7 +30,7 @@ export default function FraListPage() {
         description="Draft, current and superseded assessments. Publishing a draft makes it the recorded assessment and supersedes the last one."
         actions={
           canCreate ? (
-            <Button variant="primary" onClick={() => navigate("/fire-risk-assessments/new")}>
+            <Button variant="success" onClick={() => navigate("/fire-risk-assessments/new")}>
               + New assessment
             </Button>
           ) : undefined

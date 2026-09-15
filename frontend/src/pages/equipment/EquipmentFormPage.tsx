@@ -48,7 +48,7 @@ export default function EquipmentFormPage() {
           <Button variant="secondary" onClick={() => navigate("/equipment")}>
             Cancel
           </Button>
-          <Button variant="primary" loading={mutation.isPending} onClick={() => mutation.mutate()}>
+          <Button variant="success" loading={mutation.isPending} onClick={() => mutation.mutate()}>
             Create
           </Button>
         </div>

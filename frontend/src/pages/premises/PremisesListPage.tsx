@@ -29,7 +29,7 @@ export default function PremisesListPage() {
         description="Every workplace held in the register, and whether the duty to record a fire risk assessment applies to it."
         actions={
           canCreate ? (
-            <Button variant="primary" onClick={() => navigate("/premises/new")}>
+            <Button variant="success" onClick={() => navigate("/premises/new")}>
               + New premises
             </Button>
           ) : undefined
