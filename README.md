@@ -515,6 +515,7 @@ npm run restore:check    # restore the newest one into a scratch database
 
 | | |
 |---|---|
+| `BACKUP_DATABASE_URL` | Which database to back up. Prefer it over letting the command fall through to `DATABASE_URL`, which is whatever the checkout points at — for a developer, their own. A local target is refused outright unless `--allow-local` says it was meant. |
 | `BACKUP_DIR` | Required, no default. Somewhere you control and back up, **outside the checkout** — this repository is public. |
 | `BACKUP_PASSPHRASE` | Encrypts the dump (AES-256-GCM). Lose it and the backup is gone; put it in your password manager first. |
 | `BACKUP_KEEP` | How many dumps to keep per database. Default 10. |
@@ -533,12 +534,16 @@ has nowhere to go. `--interactive` is what lets you choose the superuser
 password, which you need for `RESTORE_URL`. The script checks the version before it starts
 and says what to install if it cannot.
 
-Two things it does that a bare `pg_dump` does not. It lists the dump back with
-`pg_restore --list` and refuses to call an empty file a backup. And it writes a
+Three things it does that a bare `pg_dump` does not. It lists the dump back with
+`pg_restore --list` and refuses to call an empty file a backup. It writes a
 manifest beside each dump — when, from which host, how many objects, the
-SHA-256 — which is what `npm run migrate` reads when it wants proof that a
-recent backup of *this* database exists before it will apply a destructive
-migration.
+SHA-256, **and which migrations that database had applied** — which is what
+`npm run migrate` reads when it wants proof that a recent backup of *this*
+database exists before it will apply a destructive migration, and what tells a
+restorer a year from now which schema is actually in the file. And it refuses a
+local database unless told explicitly, because the failure it is guarding
+against is not a crash: it is a perfectly valid backup of the wrong database,
+reported as success, leaving someone believing production is covered.
 
 **Rehearse it.** A dump nobody has restored is a file with a hopeful name.
 `npm run restore:check` puts the newest one into a scratch database and checks
@@ -718,6 +723,17 @@ the last of which no local run can check, because a Secure cookie is never
 sent over plain HTTP. It proves no business rule; that is settled before
 anything is promoted. See [`smoke/README.md`](smoke/README.md).
 
+```bash
+cd smoke
+npm run test:unit
+```
+
+The smoke suite's own tests, and the one suite here that needs nothing at
+all — no database, no deployment, no credentials. It runs both the suite above
+and `wait-for-deploy.mjs` against a stub deployment that can be broken on
+purpose, and asserts they go red when it is. A check that decides whether
+production is healthy is worth exactly what its own coverage is worth.
+
 ### Running a suite against a deployment
 
 The two writing suites default to a working copy — the backend one starts the
@@ -742,7 +758,8 @@ run that dies partway leaves them behind.
 ### In CI
 
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs all of the above
-except the smoke suite on every pull request, against a Postgres created for
+except the smoke suite itself on every pull request — the smoke suite's own
+tests do run there, since they need nothing — against a Postgres created for
 the run — built from `schema.sql` and then migrated, so a migration that
 contradicts the schema file fails there rather than on a database that
 matters. [`.github/workflows/smoke.yml`](.github/workflows/smoke.yml) waits

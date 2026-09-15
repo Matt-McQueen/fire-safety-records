@@ -46,6 +46,12 @@ const password = process.env.SMOKE_PASSWORD;
 const expectedCommit = process.env.SMOKE_COMMIT?.trim();
 const expectedEnvironment = process.env.SMOKE_ENVIRONMENT?.trim();
 
+// How long the two commit assertions keep retrying before believing a wrong
+// answer. Configurable only so that the tests in tests/ can exercise the
+// failing path in a moment rather than a minute; left unset — which is every
+// real run — it is the minute it has always been.
+const settleSeconds = Number(process.env.SMOKE_SETTLE_SECONDS ?? 60);
+
 if (!webUrl) {
   console.error("SMOKE_WEB_URL is not set. See smoke/README.md.");
   process.exit(1);
@@ -70,6 +76,25 @@ function commitMatches(reported, expected) {
   const [longer, shorter] =
     reported.length >= expected.length ? [reported, expected] : [expected, reported];
   return longer.startsWith(shorter);
+}
+
+// Retries a check for a while before believing it.
+//
+// A rollout reaches edge nodes at different moments, so a single request can be
+// answered by one that has not caught up yet. That is not a failure, it is a
+// rollout in progress — and telling the two apart is the difference between a
+// check that means something and one that cries wolf. Only the commit checks
+// use this: everything else here is asserting behaviour, where one wrong answer
+// is one too many.
+async function settles(check, { seconds = settleSeconds, every = Math.min(5, seconds / 4) } = {}) {
+  const deadline = Date.now() + seconds * 1000;
+  let last;
+  while (true) {
+    last = await check();
+    if (last.ok) return last;
+    if (Date.now() >= deadline) return last;
+    await new Promise((resolve) => setTimeout(resolve, every * 1000));
+  }
 }
 
 async function getJson(url, options = {}) {
@@ -122,10 +147,13 @@ test(
   "the API is running the commit being tested",
   { skip: expectedCommit ? false : "SMOKE_COMMIT is not set" },
   async () => {
-    const { body } = await getJson(`${webUrl}/api/health`);
+    const result = await settles(async () => {
+      const { body } = await getJson(`${webUrl}/api/health`);
+      return { ok: commitMatches(body?.commit, expectedCommit), seen: body?.commit ?? "(none)" };
+    });
     assert.ok(
-      commitMatches(body?.commit, expectedCommit),
-      `the API reports commit ${body?.commit ?? "(none)"}, expected ${expectedCommit}. ` +
+      result.ok,
+      `the API still reports commit ${result.seen} after a minute, expected ${expectedCommit}. ` +
         "The deploy has probably not finished; see smoke/wait-for-deploy.mjs.",
     );
   },
@@ -145,11 +173,18 @@ test(
   "the frontend is the commit being tested",
   { skip: expectedCommit ? false : "SMOKE_COMMIT is not set" },
   async () => {
-    const html = await (await fetch(webUrl)).text();
-    const reported = html.match(/<meta name="app-commit" content="([^"]*)"/)?.[1];
+    // The one most worth retrying. Pages serves from many edge nodes and they do
+    // not switch together, so two requests a second apart can disagree - which
+    // is exactly how this assertion failed once while wait-for-deploy.mjs had
+    // just declared the same origin ready.
+    const result = await settles(async () => {
+      const html = await (await fetch(webUrl)).text();
+      const reported = html.match(/<meta name="app-commit" content="([^"]*)"/)?.[1];
+      return { ok: commitMatches(reported, expectedCommit), seen: reported || "(none)" };
+    });
     assert.ok(
-      commitMatches(reported, expectedCommit),
-      `the frontend reports commit ${reported || "(none)"}, expected ${expectedCommit}. ` +
+      result.ok,
+      `the frontend still reports commit ${result.seen} after a minute, expected ${expectedCommit}. ` +
         "Pages deploys separately from the API, so the two can legitimately differ " +
         "for a minute — and must not still differ once both have finished.",
     );

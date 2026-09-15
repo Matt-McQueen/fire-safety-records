@@ -21,12 +21,27 @@
 //              Render instance that has spun down can take a minute to answer
 //              the first request at all, on top of the deploy itself.
 //   --interval seconds between attempts. Default 10.
+//   --confirmations  how many consecutive checks, spaced by --interval, must
+//              agree before an origin counts as ready. Default 3.
+//
+// Why confirmations: a rollout is eventually consistent. Cloudflare Pages
+// serves from many edge nodes and they do not all switch at once, so one
+// request can be answered by a node that has the new build while the next is
+// answered by one that has not. This script used to accept a single successful
+// probe as proof, and on the promotion of #9 it announced "every origin is
+// serving the expected commit" seconds before the smoke suite found the
+// frontend still on the previous one. Neither was wrong; the gate was.
+//
+// Three confirmations spaced ten seconds apart is not proof either — nothing
+// short of asking every node is — but it is the difference between catching a
+// rollout mid-flight and catching it by luck.
 
 const args = parseArgs(process.argv.slice(2));
 const urls = args.url ?? [];
 const commit = args.commit?.[0]?.trim();
 const timeoutSeconds = Number(args.timeout?.[0] ?? 600);
 const intervalSeconds = Number(args.interval?.[0] ?? 10);
+const confirmations = Math.max(1, Number(args.confirmations?.[0] ?? 3));
 
 if (urls.length === 0 || !commit) {
   console.error("usage: node wait-for-deploy.mjs --url <origin> --commit <sha> [--timeout 600]");
@@ -34,27 +49,41 @@ if (urls.length === 0 || !commit) {
 }
 
 const deadline = Date.now() + timeoutSeconds * 1000;
-const pending = new Map(urls.map((url) => [url.replace(/\/+$/, ""), "not checked yet"]));
+const pending = new Map(
+  urls.map((url) => [url.replace(/\/+$/, ""), { reason: "not checked yet", agreed: 0 }]),
+);
 
 while (true) {
-  for (const url of [...pending.keys()]) {
+  for (const [url, state] of [...pending]) {
     const result = await check(url, commit);
-    if (result.ok) {
-      console.log(`${url} is serving ${commit}`);
+
+    if (!result.ok) {
+      // Back to nothing. A node still serving the old build says the rollout is
+      // not finished, whatever the previous checks said.
+      if (state.agreed > 0) {
+        console.log(`${url} disagreed after ${state.agreed} confirmation(s) — starting again`);
+      }
+      pending.set(url, { reason: result.reason, agreed: 0 });
+      continue;
+    }
+
+    const agreed = state.agreed + 1;
+    if (agreed >= confirmations) {
+      console.log(`${url} is serving ${commit} (${agreed} consecutive checks)`);
       pending.delete(url);
     } else {
-      pending.set(url, result.reason);
+      pending.set(url, { reason: `agreed ${agreed} of ${confirmations} times`, agreed });
     }
   }
 
   if (pending.size === 0) {
-    console.log("every origin is serving the expected commit.");
+    console.log(`every origin agreed ${confirmations} times running.`);
     process.exit(0);
   }
 
   if (Date.now() >= deadline) {
     console.error(`Gave up after ${timeoutSeconds}s. Still waiting on:`);
-    for (const [url, reason] of pending) console.error(`  ${url}: ${reason}`);
+    for (const [url, state] of pending) console.error(`  ${url}: ${state.reason}`);
     console.error(
       "\nCheck the platform's own deploy log before assuming this is wrong — a build" +
         "\nthat failed will keep serving the previous commit indefinitely.",
@@ -63,7 +92,9 @@ while (true) {
   }
 
   const remaining = Math.round((deadline - Date.now()) / 1000);
-  for (const [url, reason] of pending) console.log(`waiting on ${url}: ${reason} (${remaining}s left)`);
+  for (const [url, state] of pending) {
+    console.log(`waiting on ${url}: ${state.reason} (${remaining}s left)`);
+  }
   await new Promise((resolve) => setTimeout(resolve, intervalSeconds * 1000));
 }
 
