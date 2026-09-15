@@ -61,13 +61,89 @@ const DEFAULTS = {
   logoutStatus: 204,
 };
 
+// One handler per route, each answering a single question about the
+// deployment, rather than one dispatcher carrying every fault in its own
+// branch. `ctx` is `{ config, authorised, counters }`; `counters` is the
+// mutable `{ apiHits, htmlHits }` a stub instance owns, so a cycling answer
+// (an origin mid-rollout) advances once per request rather than per route.
+const ROUTES = {
+  "/api/health": (req, res, ctx) => {
+    const { config, counters } = ctx;
+    if (config.healthStatus !== 200) return json(res, config.healthStatus, { error: "down" });
+    return json(res, 200, {
+      status: "ok",
+      service: config.service,
+      environment: config.environment,
+      commit: cycle(config.commit, counters.apiHits++),
+    });
+  },
+
+  "/": (req, res, ctx) => {
+    const { config, counters } = ctx;
+    if (!config.serveHtml) return json(res, 404, { error: "no frontend here" });
+    const commit = cycle(config.htmlCommit ?? config.commit, counters.htmlHits++);
+    return html(res, page(commit, config.stampCommit));
+  },
+
+  "/api/": (req, res, ctx) => {
+    if (!ctx.authorised) return json(res, 401, { error: "unauthorised" });
+    return json(res, 200, { data: { resources: ["premises", "assessments", "users"] } });
+  },
+
+  "/api/premises": (req, res, ctx) => {
+    const { config, authorised } = ctx;
+    if (authorised) return json(res, 200, { data: [{ id: 1, name: "A premises" }] });
+    // The fault worth proving the suite catches: records handed to a request
+    // carrying no token at all.
+    return config.unauthenticatedPremisesStatus === 200
+      ? json(res, 200, { data: [{ id: 1, name: "Disclosed without a token" }] })
+      : json(res, config.unauthenticatedPremisesStatus, { error: "unauthorised" });
+  },
+
+  "/api/premises/compliance-summary": (req, res, ctx) => {
+    const { config, authorised } = ctx;
+    if (!authorised) return json(res, 401, { error: "unauthorised" });
+    return config.complianceSummaryStatus === 200
+      ? json(res, 200, { data: { compliant: 1, overdue: 0 } })
+      : json(res, config.complianceSummaryStatus, { error: "the summary query failed" });
+  },
+
+  "/api/users/audit/log": (req, res, ctx) => {
+    const { config, authorised } = ctx;
+    if (!authorised) return json(res, 401, { error: "unauthorised" });
+    // A viewer reaching this is role enforcement having quietly lapsed.
+    return config.viewerAuditLogStatus === 200
+      ? json(res, 200, { data: [{ id: 1, action: "should not be visible to a viewer" }] })
+      : json(res, config.viewerAuditLogStatus, { error: "forbidden" });
+  },
+
+  "/api/auth/login": (req, res, ctx) => readBody(req, (body) => signIn(res, ctx.config, body)),
+
+  "/api/auth/logout": (req, res, ctx) => {
+    res.writeHead(ctx.config.logoutStatus).end();
+  },
+};
+
+function signIn(res, config, body) {
+  const { email, password } = body ?? {};
+  if (email !== config.credentials.email || password !== config.credentials.password) {
+    return json(res, 401, { error: "invalid credentials" });
+  }
+  const headers = {};
+  if (config.setRefreshCookie) {
+    headers["set-cookie"] = [REFRESH_COOKIE, config.cookieAttributes].filter(Boolean).join("; ");
+  }
+  return json(res, 200, { data: { accessToken: ACCESS_TOKEN } }, headers);
+}
+
+function cycle(value, n) {
+  return Array.isArray(value) ? value[n % value.length] : value;
+}
+
 export async function startStubOrigin(options = {}) {
   const config = { ...DEFAULTS, ...options };
   const requests = [];
-
-  let apiHits = 0;
-  let htmlHits = 0;
-  const cycle = (value, n) => (Array.isArray(value) ? value[n % value.length] : value);
+  const counters = { apiHits: 0, htmlHits: 0 };
 
   const server = http.createServer((req, res) => {
     const { pathname, searchParams } = new URL(req.url, "http://127.0.0.1");
@@ -83,70 +159,9 @@ export async function startStubOrigin(options = {}) {
       authorised,
     });
 
-    switch (pathname) {
-      case "/api/health": {
-        if (config.healthStatus !== 200) return json(res, config.healthStatus, { error: "down" });
-        return json(res, 200, {
-          status: "ok",
-          service: config.service,
-          environment: config.environment,
-          commit: cycle(config.commit, apiHits++),
-        });
-      }
-
-      case "/":
-        if (!config.serveHtml) return json(res, 404, { error: "no frontend here" });
-        return html(res, page(cycle(config.htmlCommit ?? config.commit, htmlHits++), config.stampCommit));
-
-      case "/api/":
-        if (!authorised) return json(res, 401, { error: "unauthorised" });
-        return json(res, 200, { data: { resources: ["premises", "assessments", "users"] } });
-
-      case "/api/premises":
-        if (!authorised) {
-          // The fault worth proving the suite catches: records handed to a
-          // request carrying no token at all.
-          return config.unauthenticatedPremisesStatus === 200
-            ? json(res, 200, { data: [{ id: 1, name: "Disclosed without a token" }] })
-            : json(res, config.unauthenticatedPremisesStatus, { error: "unauthorised" });
-        }
-        return json(res, 200, { data: [{ id: 1, name: "A premises" }] });
-
-      case "/api/premises/compliance-summary":
-        if (!authorised) return json(res, 401, { error: "unauthorised" });
-        return config.complianceSummaryStatus === 200
-          ? json(res, 200, { data: { compliant: 1, overdue: 0 } })
-          : json(res, config.complianceSummaryStatus, { error: "the summary query failed" });
-
-      case "/api/users/audit/log":
-        if (!authorised) return json(res, 401, { error: "unauthorised" });
-        // A viewer reaching this is role enforcement having quietly lapsed.
-        return config.viewerAuditLogStatus === 200
-          ? json(res, 200, { data: [{ id: 1, action: "should not be visible to a viewer" }] })
-          : json(res, config.viewerAuditLogStatus, { error: "forbidden" });
-
-      case "/api/auth/login":
-        return readBody(req, (body) => {
-          const { email, password } = body ?? {};
-          if (email !== config.credentials.email || password !== config.credentials.password) {
-            return json(res, 401, { error: "invalid credentials" });
-          }
-          const headers = {};
-          if (config.setRefreshCookie) {
-            headers["set-cookie"] = [REFRESH_COOKIE, config.cookieAttributes]
-              .filter(Boolean)
-              .join("; ");
-          }
-          return json(res, 200, { data: { accessToken: ACCESS_TOKEN } }, headers);
-        });
-
-      case "/api/auth/logout":
-        res.writeHead(config.logoutStatus).end();
-        return;
-
-      default:
-        return json(res, 404, { error: `no stub route for ${pathname}` });
-    }
+    const route = ROUTES[pathname];
+    if (!route) return json(res, 404, { error: `no stub route for ${pathname}` });
+    return route(req, res, { config, authorised, counters });
   });
 
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
