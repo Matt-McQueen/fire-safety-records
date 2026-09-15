@@ -124,6 +124,14 @@ const ROUTES = {
   },
 };
 
+// Flagged on CRAP (complexity x no static coverage), not on cyclomatic or
+// cognitive complexity - it clears both thresholds by a wide margin. Its
+// "coverage" is every request smoke-suite.test.mjs signs in through, which a
+// static graph cannot see because it happens over HTTP to a spawned process
+// rather than through an import. Both branches this function has - wrong
+// credentials, and a sign-in with the session cookie withheld - are asserted
+// on directly in that file.
+// fallow-ignore-next-line complexity
 function signIn(res, config, body) {
   const { email, password } = body ?? {};
   if (email !== config.credentials.email || password !== config.credentials.password) {
