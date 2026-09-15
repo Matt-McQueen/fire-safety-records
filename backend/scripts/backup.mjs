@@ -23,6 +23,11 @@
 //                       Lose the passphrase and you lose the backup: store it
 //                       in your password manager before you use it.
 //   BACKUP_KEEP         how many dumps to keep per database (default 10).
+//   BACKUP_DATABASE_URL which database to back up. Prefer this over letting it
+//                       fall through to DATABASE_URL, which is whatever this
+//                       checkout happens to point at — for a developer, their
+//                       own database. A local target is refused outright unless
+//                       --allow-local says it was meant.
 //
 // Needs the PostgreSQL client tools (pg_dump, pg_restore) on PATH, at a major
 // version at or above the server's — they do not ship with Node. Install the
@@ -42,9 +47,68 @@ const backupDir = process.env.BACKUP_DIR;
 const passphrase = process.env.BACKUP_PASSPHRASE;
 const keep = Number(process.env.BACKUP_KEEP ?? 10);
 
-if (!process.env.DATABASE_URL) {
-  console.error("DATABASE_URL is not set. Copy .env.example to .env first.");
+// Which database this backs up, said out loud rather than inherited.
+//
+// DATABASE_URL is whatever the checkout is currently pointed at, and for a
+// developer that is their own local database. `npm run backup` with no thought
+// therefore produces a perfectly valid, perfectly useless backup of an empty
+// dev database, reports success, and leaves someone believing production is
+// covered. That is the worst shape a safety feature can take.
+//
+// So: BACKUP_DATABASE_URL wins if it is set, and a local target is refused
+// unless --allow-local says it was meant. Backing up localhost is a reasonable
+// thing to want occasionally; doing it by accident is not.
+const explicitTarget = process.env.BACKUP_DATABASE_URL?.trim();
+const databaseUrl = explicitTarget || process.env.DATABASE_URL;
+const allowLocal = process.argv.includes("--allow-local");
+
+if (!databaseUrl) {
+  console.error(
+    [
+      "Nothing to back up: neither BACKUP_DATABASE_URL nor DATABASE_URL is set.",
+      "",
+      "  BACKUP_DATABASE_URL is the one to prefer — it names the database this",
+      "  backup is for, rather than inheriting whatever the checkout happens to",
+      "  be pointed at.",
+      "",
+    ].join("\n"),
+  );
   process.exit(1);
+}
+
+if (isLocalHost(databaseUrl) && !allowLocal) {
+  console.error(
+    [
+      "",
+      `Refusing to back up ${describeTarget(databaseUrl).label}: it is a local database.`,
+      "",
+      explicitTarget
+        ? "  BACKUP_DATABASE_URL names it, which is unusual but explicit."
+        : "  This is DATABASE_URL — whatever this checkout is pointed at, which for",
+      explicitTarget ? null : "  a developer is their own database rather than production.",
+      "",
+      "  A backup of a local database is a valid file and almost never the one",
+      "  anyone wanted. If it is what you meant, say so:",
+      "",
+      "    npm run backup -- --allow-local",
+      "",
+      "  To back up production, name it:",
+      "",
+      "    $env:BACKUP_DATABASE_URL = '<the production connection string>'",
+      "",
+    ]
+      .filter((line) => line !== null)
+      .join("\n"),
+  );
+  process.exit(1);
+}
+
+function isLocalHost(url) {
+  try {
+    return /^(localhost|127\.0\.0\.1|::1)$/.test(new URL(url).hostname);
+  } catch {
+    return false;
+  }
 }
 
 if (!backupDir) {
@@ -65,7 +129,7 @@ if (!backupDir) {
   process.exit(1);
 }
 
-const target = describeTarget(process.env.DATABASE_URL);
+const target = describeTarget(databaseUrl);
 
 if (!passphrase) {
   console.warn(
@@ -91,7 +155,7 @@ const finalPath = passphrase ? `${plainPath}.enc` : plainPath;
 
 console.log(`Backing up ${target.label}`);
 
-const serverVersion = await readServerVersion(process.env.DATABASE_URL);
+const { serverVersion, migrations } = await readDatabaseFacts(databaseUrl);
 await assertClientIsNewEnough(serverVersion);
 
 // Custom format: compressed, and restorable table by table, which matters when
@@ -112,7 +176,7 @@ await run("pg_dump", [
   "--no-privileges",
   "--file",
   plainPath,
-  process.env.DATABASE_URL,
+  databaseUrl,
 ]);
 
 // A dump that cannot be listed cannot be restored, and finding that out now is
@@ -143,7 +207,9 @@ const manifest = {
   // scope is visible in the manifests rather than only in the code.
   schemas: ["public"],
   encrypted: Boolean(passphrase),
-  commit: process.env.GIT_COMMIT ?? null,
+  // What schema is in this dump, and roughly what code it was taken alongside.
+  migrations,
+  commit: await checkoutCommit(),
 };
 
 const manifestPath = path.join(backupDir, `${base}.manifest.json`);
@@ -161,20 +227,49 @@ console.log(
 
 // --- the pieces -------------------------------------------------------------
 
-async function readServerVersion(url) {
+// The server version, and the migrations this database has applied.
+//
+// The migration list is what a restore actually needs to know. "Taken on the
+// 15th" says nothing about which schema the dump contains; "applied up to
+// 0004" says exactly that, and restore-check.mjs compares it against the
+// checkout so a dump taken before today's migration is spotted as such rather
+// than restored into a confusing half-state.
+async function readDatabaseFacts(url) {
   const client = new pg.Client({
     connectionString: url,
     ssl: /localhost|127\.0\.0\.1/.test(url) ? false : { rejectUnauthorized: false },
   });
   try {
     await client.connect();
-    const { rows } = await client.query("SHOW server_version");
-    return rows[0].server_version;
+    const version = await client.query("SHOW server_version");
+
+    // Null rather than [] where the table does not exist: "no migrations have
+    // been applied" and "this database predates the migration runner" are
+    // different facts, and only one of them is reassuring.
+    const applied = await client
+      .query("SELECT filename FROM schema_migrations ORDER BY filename")
+      .then((result) => result.rows.map((row) => row.filename))
+      .catch(() => null);
+
+    return { serverVersion: version.rows[0].server_version, migrations: applied };
   } catch (error) {
     console.error(`Could not reach ${target.label}: ${error.message}`);
     process.exit(1);
   } finally {
     await client.end().catch(() => {});
+  }
+}
+
+// The checkout this was taken from, which is a hint and not a promise: the
+// machine running the backup is not necessarily on the same commit as the
+// deployment whose database it is backing up. The migration list above is the
+// authoritative answer to "what schema is in here".
+async function checkoutCommit() {
+  if (process.env.GIT_COMMIT) return process.env.GIT_COMMIT;
+  try {
+    return (await capture("git", ["rev-parse", "HEAD"])).trim() || null;
+  } catch {
+    return null;
   }
 }
 

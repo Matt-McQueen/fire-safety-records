@@ -515,6 +515,7 @@ npm run restore:check    # restore the newest one into a scratch database
 
 | | |
 |---|---|
+| `BACKUP_DATABASE_URL` | Which database to back up. Prefer it over letting the command fall through to `DATABASE_URL`, which is whatever the checkout points at — for a developer, their own. A local target is refused outright unless `--allow-local` says it was meant. |
 | `BACKUP_DIR` | Required, no default. Somewhere you control and back up, **outside the checkout** — this repository is public. |
 | `BACKUP_PASSPHRASE` | Encrypts the dump (AES-256-GCM). Lose it and the backup is gone; put it in your password manager first. |
 | `BACKUP_KEEP` | How many dumps to keep per database. Default 10. |
@@ -533,12 +534,16 @@ has nowhere to go. `--interactive` is what lets you choose the superuser
 password, which you need for `RESTORE_URL`. The script checks the version before it starts
 and says what to install if it cannot.
 
-Two things it does that a bare `pg_dump` does not. It lists the dump back with
-`pg_restore --list` and refuses to call an empty file a backup. And it writes a
+Three things it does that a bare `pg_dump` does not. It lists the dump back with
+`pg_restore --list` and refuses to call an empty file a backup. It writes a
 manifest beside each dump — when, from which host, how many objects, the
-SHA-256 — which is what `npm run migrate` reads when it wants proof that a
-recent backup of *this* database exists before it will apply a destructive
-migration.
+SHA-256, **and which migrations that database had applied** — which is what
+`npm run migrate` reads when it wants proof that a recent backup of *this*
+database exists before it will apply a destructive migration, and what tells a
+restorer a year from now which schema is actually in the file. And it refuses a
+local database unless told explicitly, because the failure it is guarding
+against is not a crash: it is a perfectly valid backup of the wrong database,
+reported as success, leaving someone believing production is covered.
 
 **Rehearse it.** A dump nobody has restored is a file with a hopeful name.
 `npm run restore:check` puts the newest one into a scratch database and checks
