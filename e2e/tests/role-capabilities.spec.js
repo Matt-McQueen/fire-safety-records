@@ -83,6 +83,12 @@ test("an assessor may create and amend records, but not delete or publish them",
   await page.getByRole("button", { name: "+ Add finding" }).click();
   await page.getByLabel("Finding").fill("Emergency lighting in the stairwell not illuminating on test.");
   await page.getByRole("button", { name: "Add", exact: true }).click();
+  // See fra-lifecycle.spec.js: the text alone is matched by the textarea this
+  // test just typed into, so the form closing is what actually says the
+  // finding was saved. Left unfixed the first time #8 covered this file's
+  // second occurrence - this one doesn't race a publish, but it's the same
+  // defect: it would pass whether or not the finding ever reached the server.
+  await expect(page.getByRole("button", { name: "Add", exact: true })).toHaveCount(0);
   await expect(page.getByText("Emergency lighting in the stairwell")).toBeVisible();
 
   await expect(page.getByRole("button", { name: "Publish" })).toHaveCount(0);

@@ -49,6 +49,11 @@ test("a check history gates deletion, and the latest check decides the obstructi
   await page.getByLabel("Obstructions found").fill("Stored furniture blocking the fire door at the east stairwell.");
   await page.getByRole("button", { name: "Add", exact: true }).click();
 
+  // See fra-lifecycle.spec.js: "Obstructions found" is a textarea, so
+  // getByText would match the words this test just typed into it whether or
+  // not the check was ever saved. The form closing (onSuccess, and nowhere
+  // else) is what actually says so.
+  await expect(page.getByRole("button", { name: "Add", exact: true })).toHaveCount(0);
   await expect(page.getByText("Stored furniture blocking the fire door")).toBeVisible();
   await expect(page.getByText("Fail", { exact: true })).toBeVisible();
   await expect(page.getByText("Obstruction outstanding")).toBeVisible();
