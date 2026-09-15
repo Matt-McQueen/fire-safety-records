@@ -1,6 +1,6 @@
 import type { ButtonHTMLAttributes } from "react";
 
-type Variant = "primary" | "secondary" | "danger" | "ghost";
+type Variant = "primary" | "secondary" | "danger" | "success" | "ghost";
 type Size = "sm" | "md";
 
 const VARIANT_CLASSES: Record<Variant, string> = {
@@ -9,6 +9,8 @@ const VARIANT_CLASSES: Record<Variant, string> = {
   secondary:
     "bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800 focus-visible:outline-slate-400 disabled:text-slate-400 dark:disabled:text-slate-600",
   danger: "bg-white dark:bg-slate-900 text-red-700 dark:text-red-400 border border-red-300 dark:border-red-700 hover:bg-red-50 dark:hover:bg-red-950/40 focus-visible:outline-red-600",
+  success:
+    "bg-white dark:bg-slate-900 text-green-700 dark:text-green-400 border border-green-300 dark:border-green-700 hover:bg-green-50 dark:hover:bg-green-950/40 focus-visible:outline-green-600",
   ghost: "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 focus-visible:outline-slate-400",
 };
 

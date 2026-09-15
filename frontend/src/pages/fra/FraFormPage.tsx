@@ -55,7 +55,7 @@ export default function FraFormPage() {
           <Button variant="secondary" onClick={() => navigate("/fire-risk-assessments")}>
             Cancel
           </Button>
-          <Button variant="primary" loading={saveMutation.isPending} onClick={() => saveMutation.mutate()}>
+          <Button variant="success" loading={saveMutation.isPending} onClick={() => saveMutation.mutate()}>
             Create draft
           </Button>
         </div>

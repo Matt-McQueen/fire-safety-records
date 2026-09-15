@@ -46,7 +46,7 @@ export function ResourceFormFooter({
           Cancel
         </Button>
         {canWrite && (
-          <Button variant="primary" loading={saving} onClick={onSave}>
+          <Button variant="success" loading={saving} onClick={onSave}>
             {isNew ? "Create" : "Save changes"}
           </Button>
         )}
