@@ -167,8 +167,13 @@ jobs:
       # The rehearsal is the test. A dump nobody has restored is a file with a
       # hopeful name, and the only way to know this one works is to put it back
       # somewhere and look at what arrived.
+      # --allow-local because this database is deliberately local and exists for
+      # four minutes. The flag is the point: backup.mjs refuses a local target
+      # unless someone says they meant it, so that `npm run backup` from a
+      # developer's checkout cannot quietly produce a valid backup of their own
+      # empty database and report success.
       - name: Take a backup
-        run: npm run backup
+        run: npm run backup -- --allow-local
         working-directory: backend
       - name: Restore it and check what came back
         run: npm run restore:check
