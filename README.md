@@ -408,8 +408,11 @@ person's judgement rather than a command, and neither is skippable.
 4. **Open the pull request against `staging`**, with those results in the
    description. CI runs the same checks on a throwaway database, and the pull
    request waits for review. **Not against `main`** — `main` is what production
-   deploys from, so a pull request merged there is a change shipped to
-   production before staging has seen it.
+   deploys from, so a pull request merged there straight from a feature branch
+   is a change shipped to production before staging has seen it. (Promotion,
+   step 8 below, opens its own pull request from `staging` into `main` once
+   staging is approved — that one is the intended route, not the thing this
+   rule forbids.)
 5. **Merge to `staging`.** Apply any migration to the staging database first
    (`npm run migrate`), then let the push deploy. Wait for the deploy to land
    before testing it:
@@ -435,7 +438,10 @@ person's judgement rather than a command, and neither is skippable.
    migration, and the runner will refuse a destructive one without a backup
    recorded in the last 24 hours. Set any new environment variable
    in Render, Vercel and the Pages project before the deploy lands, not after.
-   Then fast-forward `main` from `staging` and push.
+   Then open a pull request from `staging` into `main` and merge it once CI is
+   green — the pre-push hook (see *Branch protection* below) refuses a direct
+   push to `main`, fast-forward included, and reserves that override for
+   reverting a broken deploy, not routine promotion.
 9. **Check production** with the read-only suite, and nothing else:
 
    ```bash
