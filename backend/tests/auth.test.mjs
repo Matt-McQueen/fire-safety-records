@@ -9,9 +9,38 @@ import {
   makeUser,
   pool,
   refreshCookieFrom,
+  remote,
   signIn,
   TEST_PASSWORD,
 } from "./helpers.mjs";
+
+// Two checks below cannot mean anything when the app is a deployment rather
+// than this process. Both are skipped with the reason named, not deleted: what
+// they check matters, and they still run on every local run and in CI, which is
+// where a change is proved before it is deployed at all.
+//
+// Vercel's managed firewall refuses a JWT whose signature is empty before the
+// request reaches the function, with a bare 403 carrying no X-Request-Id and no
+// JSON body. Confirmed by probing staging directly: the same token with any
+// non-empty signature is answered 401 by the app, as it should be. So against a
+// deployment the assertion reads the platform's refusal rather than the app's —
+// the request is refused either way, but not by the code under test.
+const behindAPlatformEdge = remote
+  ? `${remote} refuses an unsigned token at its own edge, so this would assert the platform's behaviour rather than the app's`
+  : false;
+
+// The sign-in limiter is exercised by lowering `config.rateLimits` and letting
+// the ceiling be crossed. That mutates the config object in *this* process,
+// which is the app only when the app is started here. Against a deployment it
+// changes nothing: staging answers RateLimit-Limit: 10000, deliberately raised
+// by RATE_LIMIT_LOGIN so this suite is not throttled partway through, so five
+// attempts cannot reach the ceiling. Being serverless compounds it — the
+// limiter is held in memory, so the count is per-instance and resets with every
+// cold start — but the config mutation alone is enough to make the test
+// meaningless there.
+const notInThisProcess = remote
+  ? `the ceiling is lowered by mutating config in this process, which is not the process serving ${remote}`
+  : false;
 
 test("health is the only endpoint reachable without a token", async () => {
   const health = await anonymous.get("/api/health");
@@ -240,8 +269,19 @@ test("a token signed with the wrong key, or tampered with, is refused", async ()
   ).toString("base64url")}.${signature}`;
 
   assert.equal((await client(tampered).get("/api/auth/me")).status, 401);
+});
 
-  // alg:none, the classic JWT forgery.
+// alg:none, the classic JWT forgery. Its own test rather than a second
+// assertion in the one above, so that the tampered-payload check — which a
+// deployment answers correctly — keeps running everywhere, and only the part a
+// platform edge intercepts is skipped. smoke/ checks the same forgery against a
+// deployed environment, where a refusal from either layer is the thing worth
+// proving.
+test("a token with no signature at all is refused", { skip: behindAPlatformEdge }, async () => {
+  const account = await makeUser("viewer");
+  const session = await signIn(account);
+  const payload = session.accessToken.split(".")[1];
+
   const unsigned = `${Buffer.from(JSON.stringify({ alg: "none", typ: "JWT" })).toString(
     "base64url",
   )}.${payload}.`;
@@ -261,22 +301,26 @@ test("/api/auth/me reports the role and the premises in scope", async () => {
 
 // Last in the file: it lowers the sign-in ceiling for the shared limiter, so
 // anything after it would be throttled.
-test("repeated sign-in attempts from one address are rate limited", async () => {
-  const account = await makeUser("viewer");
-  const original = config.rateLimits.loginPerFifteenMinutes;
-  config.rateLimits.loginPerFifteenMinutes = 1;
-  try {
-    let limited = null;
-    for (let attempt = 0; attempt < 5 && !limited; attempt += 1) {
-      const response = await anonymous.post("/api/auth/login", {
-        email: account.email,
-        password: "wrong-password-here",
-      });
-      if (response.status === 429) limited = response;
+test(
+  "repeated sign-in attempts from one address are rate limited",
+  { skip: notInThisProcess },
+  async () => {
+    const account = await makeUser("viewer");
+    const original = config.rateLimits.loginPerFifteenMinutes;
+    config.rateLimits.loginPerFifteenMinutes = 1;
+    try {
+      let limited = null;
+      for (let attempt = 0; attempt < 5 && !limited; attempt += 1) {
+        const response = await anonymous.post("/api/auth/login", {
+          email: account.email,
+          password: "wrong-password-here",
+        });
+        if (response.status === 429) limited = response;
+      }
+      assert.ok(limited, "the limiter should refuse once the ceiling is passed");
+      assert.equal(limited.body.error.code, "too_many_requests");
+    } finally {
+      config.rateLimits.loginPerFifteenMinutes = original;
     }
-    assert.ok(limited, "the limiter should refuse once the ceiling is passed");
-    assert.equal(limited.body.error.code, "too_many_requests");
-  } finally {
-    config.rateLimits.loginPerFifteenMinutes = original;
-  }
-});
+  },
+);

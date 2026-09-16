@@ -57,6 +57,9 @@ const DEFAULTS = {
   // stopped being enforced, a session cookie that lost a flag.
   unauthenticatedPremisesStatus: 401,
   viewerAuditLogStatus: 403,
+  // An API that stopped verifying signatures and accepts whatever claims it is
+  // handed — the fault the forged-token check exists to catch.
+  honoursForgedTokens: false,
   complianceSummaryStatus: 200,
   logoutStatus: 204,
 };
@@ -117,6 +120,14 @@ const ROUTES = {
       : json(res, config.viewerAuditLogStatus, { error: "forbidden" });
   },
 
+  "/api/auth/me": (req, res, ctx) => {
+    const { config, authorised } = ctx;
+    if (authorised) return json(res, 200, { data: { email: STUB_EMAIL, role: "viewer" } });
+    return config.honoursForgedTokens && bearer(req)
+      ? json(res, 200, { data: { email: "forged@example.invalid", role: "admin" } })
+      : json(res, 401, { error: "unauthorised" });
+  },
+
   "/api/auth/login": (req, res, ctx) => readBody(req, (body) => signIn(res, ctx.config, body)),
 
   "/api/auth/logout": (req, res, ctx) => {
@@ -142,6 +153,10 @@ function signIn(res, config, body) {
     headers["set-cookie"] = [REFRESH_COOKIE, config.cookieAttributes].filter(Boolean).join("; ");
   }
   return json(res, 200, { data: { accessToken: ACCESS_TOKEN } }, headers);
+}
+
+function bearer(req) {
+  return /^Bearer .+/.test(req.headers.authorization ?? "");
 }
 
 function cycle(value, n) {
