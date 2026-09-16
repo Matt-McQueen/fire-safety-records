@@ -176,6 +176,18 @@ test("records served without a token fail the suite", async (t) => {
   assert.equal(unauthenticated.length, 1, "the unauthenticated read was retried");
 });
 
+test("a deployment that honours a forged token fails the suite", async (t) => {
+  // Signature verification having quietly lapsed: the API takes the claims it
+  // is handed, so anyone can mint themselves an admin. backend/tests proves the
+  // app refuses this, but cannot prove it against staging — Vercel's own edge
+  // intercepts the shape first — so a deployed environment is checked here.
+  await expectRed(
+    t,
+    { commit: STUB_COMMIT, honoursForgedTokens: true },
+    "a forged token is refused",
+  );
+});
+
 test("an audit log open to a viewer fails the suite", async (t) => {
   await expectRed(
     t,
