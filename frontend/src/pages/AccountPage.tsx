@@ -76,7 +76,7 @@ export default function AccountPage() {
             />
           </FormField>
 
-          <Button type="submit" variant="primary" loading={mutation.isPending}>
+          <Button type="submit" variant="success" loading={mutation.isPending}>
             Change password
           </Button>
         </form>
