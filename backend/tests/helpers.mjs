@@ -55,6 +55,16 @@ export const TEST_PASSWORD = "correct-horse-battery-staple-42";
 // point this at production, which is what smoke/ exists for instead.
 const remoteBase = (process.env.API_BASE_URL ?? "").replace(/\/+$/, "");
 
+// Where the app under test is: null when it is running inside this process,
+// the deployment's origin when it is not. A handful of tests can only mean
+// something in one of the two cases — a test that reaches into `config` to
+// retune the running app cannot reach a process on another machine, and a
+// deployment sitting behind a platform edge may have a request refused before
+// the app ever sees it. Those tests skip with the reason stated rather than
+// failing, so the suite still comes back green against staging and a real
+// regression in it is not lost among familiar failures.
+export const remote = remoteBase || null;
+
 let server = null;
 let base = remoteBase;
 

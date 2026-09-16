@@ -583,6 +583,30 @@ differences are load-bearing:
 So a pass on staging is evidence, not proof, for those classes of change, and
 the smoke suite on production is what actually closes the loop.
 
+Two checks in `backend/tests/auth.test.mjs` skip when the suite is pointed at a
+deployment rather than an app started in the test process, and say so in the
+output rather than failing quietly or being deleted:
+
+- **`a token with no signature at all is refused`.** Vercel's managed firewall
+  refuses a JWT with an empty signature at its own edge, answering a bare `403`
+  with no request id and no JSON body — the function is never invoked. The same
+  token with any non-empty signature reaches the app and is answered `401`, so
+  the app's own behaviour is intact; the assertion simply cannot see it there.
+- **`repeated sign-in attempts from one address are rate limited`.** The test
+  crosses the ceiling by lowering `config.rateLimits` — in the test process,
+  which is the app only when the app is started there. Against a deployment the
+  mutation reaches nothing, and staging's own ceiling is `RATE_LIMIT_LOGIN`,
+  raised to 10000 precisely so this suite is not throttled partway through. The
+  in-memory, per-instance limiter described above compounds it, but the config
+  mutation alone is enough.
+
+Both behaviours still matter on production, where the API is a long-lived Node
+process with no platform edge in front of it. The forged token is checked there
+by the smoke suite, which can try it without an account and without writing
+anything. The limiter is not, and cannot be by a read-only suite: proving it
+means failing sign-in repeatedly, which locks the account it is aimed at. It is
+proved locally and in CI, before anything is deployed at all.
+
 ### Branch protection
 
 Everything above is convention until something enforces it: `main` and

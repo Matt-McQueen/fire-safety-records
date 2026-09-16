@@ -76,6 +76,10 @@ function trimSlash(value) {
   return (value ?? "").trim().replace(/\/+$/, "");
 }
 
+function base64url(value) {
+  return Buffer.from(JSON.stringify(value)).toString("base64url");
+}
+
 // Compared by prefix, so a short SHA works as the expected value.
 // Retries a check for a while before believing it.
 //
@@ -208,6 +212,33 @@ test("records cannot be read without a token", async () => {
 test("the audit log cannot be read without a token", async () => {
   const { status } = await getJson(`${webUrl}/api/users/audit/log`);
   assert.equal(status, 401);
+});
+
+test("a forged token is refused", async () => {
+  // alg:none with an empty signature — the classic JWT forgery, and the one
+  // thing an access-control check can try without an account of any kind.
+  //
+  // Checked here because backend/tests cannot check it against staging: Vercel
+  // refuses this shape at its own edge, so the assertion there would read the
+  // platform rather than the app. This one is deliberately satisfied by either
+  // — a refusal from the edge and a refusal from the app are both a refusal,
+  // and what a deployment check is for is proving that nothing was served. On
+  // production, where the API is a long-lived process with no such edge in
+  // front of it, the refusal is the app's own 401.
+  const forged = `${base64url({ alg: "none", typ: "JWT" })}.${base64url({
+    sub: "1",
+    email: "forged@example.invalid",
+    exp: Math.floor(Date.now() / 1000) + 3600,
+  })}.`;
+
+  const { status, body } = await getJson(`${webUrl}/api/auth/me`, {
+    headers: { Authorization: `Bearer ${forged}` },
+  });
+  assert.ok(
+    status === 401 || status === 403,
+    `a request carrying an unsigned token returned ${status}, not a refusal`,
+  );
+  assert.ok(!body?.data, "an unsigned token came back with data");
 });
 
 test("an unknown account cannot sign in", async () => {
