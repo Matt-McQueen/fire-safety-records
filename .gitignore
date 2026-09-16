@@ -1,5 +1,13 @@
 node_modules/
+
+# Every environment file, not just the bare one. `.env` alone left
+# `.env.staging`, `.env.local`, `.env.production` and anything else of that
+# shape committable, and this repository is public — a connection string put in
+# one of them while testing against a deployment would have been published.
+# The example is the one that is meant to be in here, so it is named back in.
 .env
+.env.*
+!.env.example
 .claude/scheduled_tasks.lock
 dist/
 *.log
