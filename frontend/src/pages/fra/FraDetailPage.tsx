@@ -78,7 +78,7 @@ export default function FraDetailPage() {
               <Button onClick={() => setEditing((v) => !v)}>{editing ? "Close" : "Edit"}</Button>
             )}
             {canPublish && (
-              <Button variant="primary" onClick={() => setPublishing(true)}>
+              <Button variant="success" onClick={() => setPublishing(true)}>
                 Publish
               </Button>
             )}
@@ -351,7 +351,7 @@ function PublishDialog({
         <Button variant="secondary" onClick={onClose}>
           Cancel
         </Button>
-        <Button variant="primary" loading={mutation.isPending} onClick={() => mutation.mutate()}>
+        <Button variant="success" loading={mutation.isPending} onClick={() => mutation.mutate()}>
           Confirm publish
         </Button>
       </div>
